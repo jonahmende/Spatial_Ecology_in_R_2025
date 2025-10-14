@@ -66,5 +66,22 @@ plot(densitymap, col=cl)
 # search your browser for "colors in R" 
 # http://www.stat.columbia.edu/~tzheng/files/Rcolor.pdf
 
+# Exercise: change the color ramp palette using different colors
+
+cln <- colorRampPalette(c("purple1", "orchid2", "palegreen3", "paleturquoise"))(100)
+plot(densitymap, col=cln)
+
+# Exrcise: build a multiframe and plot the densitymap with two different color ramp palettes one beside the other
+
+par(mfrow=c(1,2))
+
+cln <- colorRampPalette(c("purple1", "orchid2", "palegreen3", "paleturquoise"))(100)
+plot(densitymap, col=cln)
+
+clg <- colorRampPalette(c("green4", "green3", "green2", "green1", "green"))(100)
+plot(densitymap, col=clg)
+
+dev.off()
+
 
 
