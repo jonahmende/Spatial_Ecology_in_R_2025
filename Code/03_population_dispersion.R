@@ -14,10 +14,33 @@ rana
 
 rana$Occurrence
 
-# how to acces single coordinate data???
-
-
 plot(rana)
+
+# Assuming 'rana' is your SpatVector with points and attributes
+# Extract coordinates using the geom() function
+coordinates <- geom(rana)
+
+# Convert the coordinates to a data frame
+coordinates_df <- as.data.frame(coordinates)
+
+# Extract the 'Occurrence' attribute from the SpatVector
+occurrence_df <- as.data.frame(rana$Occurrence)
+
+# Combine the coordinates and the occurrence data into one data frame
+final_df <- cbind(coordinates_df, occurrence_df)
+
+# Export the final data frame to a CSV file
+write.csv(final_df, "coordinates_with_occurrence.csv", row.names = FALSE)
+
+# View the first few rows of the final table (optional)
+head(final_df)
+
+# Add the attribute column (e.g., Occurrence) to the data frame
+coordinates_df$Occurrence <- rana$Occurrence
+
+# Export the data frame to a CSV file
+write.csv(coordinates_df, "coordinates_with_occurrence.csv", row.names = FALSE)
+
 
 # select all presences and absences
 pres <- rana[rana$Occurrence==1]
@@ -79,3 +102,7 @@ plot(vegemap)
 cova <- c(elevmap, tempmap, vegemap, precmap)
 plot(cova)
 plot(cova$temperature)
+
+anci <- c(elevmap, tempmap, precmap, vegemap)
+plot(anci)
+plot(anci, col=magma(100))
