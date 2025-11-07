@@ -1,0 +1,11 @@
+# Code for multivariate analysis of species x plot data in communities
+
+# install.packages("vegan")
+library(vegan)
+
+data(dune)
+
+# Dataset
+dune
+head(dune)
+View(dune)
