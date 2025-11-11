@@ -1,0 +1,22 @@
+# Code to estimate the temporal overlap between species
+
+# install.packages("overlap")
+
+library(overlap)
+
+data(kerinci)
+
+# Exercise: show the first 6 rows of kerinci
+head(kerinci)
+
+kerinci
+
+summary(kerinci)
+
+kerinci$Timecirc <- kerinci$Time * 2 * pi
+
+# tiger data
+tiger <- kerinci[kerinci$Sps=="tiger",]  # , to stop the comma to stop
+tigertime <- tiger$Timecirc
+
+densityPlot(tigertime)
