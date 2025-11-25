@@ -37,6 +37,18 @@ plot(b3, col=cl)
 plot(b4, col=cl)
 plot(b8, col=cl)
 
+# overwrite multiframe function
+im.multiframe <- function(x,y){
+  par(mfrow=c(x,y))
+}
+
+# use multiframe function
+im.multiframe(2,2)
+plot(b2, col=cl)
+plot(b3, col=cl)
+plot(b4, col=cl)
+plot(b8, col=cl)
+
 # stack
 sentstack <- c(b2, b3, b4, b8)
 plot(sentstack, col=cl)
@@ -45,6 +57,20 @@ plot(sentstack, col=cl)
 dev.off()
 plot(sentstack[[1]], col=cl)
 plot(sentstack[[4]], col=cl)
+
+# plot blue against green and check for correlation
+plot(b2,b3)
+
+# plot b2-b3 and b2-b8 against each other in a multiframe
+im.multiframe(1,2)
+plot(b2,b3)
+plot(b2,b8)
+
+
+
+### END OF LECTURE ###
+
+
 
 # Multiframe with different color palette
 par(mfrow=c(2,2))
