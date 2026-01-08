@@ -1,0 +1,75 @@
+\documentclass[12pt,a4]{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{hyperref} % to insert hyperlinks of references
+\usepackage{lineno}
+\usepackage{natbib}
+\linenumbers
+
+\title{spatial ecology in R test}
+\author{jonahme }
+\date{January 2026} % to exclude date: delete argument, not function, or remove to get date from computer
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction} \label{sec:intro}
+Lorem ipsum
+ 
+dolor sit amet
+
+Über die Herkunft des Textes lässt sich keine Klarheit mehr gewinnen. Auch finden sich viele leicht voneinander abweichende Varianten dieses Textes. In der 1914 herausgegebenen lateinisch-englischen Cicero-Werkausgabe findet sich der Text auf Seite 36 oben beginnend mit lorem ipsum…, da das Wort dolorem getrennt umbrochen wurde
+
+\smallskip 
+\noindent Über die Herkunft des Textes lässt sich keine Klarheit mehr gewinnen. Auch finden sich viele leicht voneinander abweichende Varianten dieses Textes. In der 1914 herausgegebenen lateinisch-englischen Cicero-Werkausgabe findet sich der Text auf Seite 36 oben beginnend mit lorem ipsum…, da das Wort dolorem getrennt umbrochen wurde
+
+\bigskip
+Über die Herkunft des Textes lässt sich keine Klarheit mehr gewinnen. Auch finden sich viele leicht voneinander abweichende Varianten dieses Textes. In der 1914 herausgegebenen lateinisch-englischen Cicero-Werkausgabe findet sich der Text auf Seite 36 oben beginnend mit lorem ipsum…, da das Wort dolorem getrennt umbrochen wurde
+
+\subsection{aim}
+blabla
+
+\section{Methods} \label{sec:methods}
+In this thesis I made use of the function related to gravity as in equation \ref{eq:newton}
+
+\begin{equation}
+    F= G \times \frac{m_1 \times m_2}{r^2}
+    \label{eq:newton}
+\end{equation}
+
+The above equation was blabla equation \ref{eq:complex}
+
+\begin{equation}
+    F= \sqrt[3]{G \times \frac{m_1 \times m_2}{r^2}}
+    \label{eq:complex}
+\end{equation}
+
+As in section \ref{sec:intro}
+
+\section{Results}
+\section{Discussion}
+
+Uaing the formulas presented in section \ref{sec:methods} I obtained the results in figure \ref{fig:result}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{Bildschirmfoto 2024-07-31 um 15.46.29.png}
+    \caption{blabla}
+    \label{fig:result}
+\end{figure}
+
+My results were attained by \citep{brodrick,lek}.
+
+\begin{thebibliography}{999}
+    \bibitem[Brodrick et al.(2019)]{brodrick}
+    Brodrick, P. G., Davies, A. B., \& Asner, G. P. (2019). Uncovering ecological patterns with convolutional neural networks. Trends in ecology \& evolution, 34(8), 734-745.
+
+    \bibitem[Lek et al.(2012)]{lek}
+    Lek, S., \& Guégan, J. F. (Eds.). (2012). Artificial neuronal networks: application to ecology and evolution. Springer Science \& Business Media.
+\end{thebibliography}
+
+\section*{Acknowledgement}
+
+\end{document}
