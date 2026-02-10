@@ -481,7 +481,7 @@ ggsave("Environmental_Ridgelines.png", plot = ridge_plot, width = 8, height = 6,
 
 ```
 
-![Ridgeline Plot](Environmental_Ridgelines.png)
+
 
 
 
