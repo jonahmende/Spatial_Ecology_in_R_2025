@@ -493,6 +493,14 @@ history <- model %>% fit(
   verbose = 1
 )
 
+# Generate the plot
+plot(history)
+
+# Save the current plot to a file
+# High DPI (300) ensures the text and lines are crisp for reports
+ggsave("CNN_Training_History.png", width = 8, height = 6, dpi = 300)
+
+                             
 # --- 21. EVALUATION & ROC CURVE ---
 
 y_pred_test <- as.vector(model %>% predict(x_test_rand))
