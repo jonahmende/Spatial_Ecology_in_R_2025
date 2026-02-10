@@ -484,6 +484,7 @@ ggsave("Environmental_Ridgelines.png", plot = ridge_plot, width = 8, height = 6,
 ![Ridgeline Plot](Environmental_Ridgelines.png)
 
 
+
 ## 13. Species Data Acquisition: Sourcing Wolf Occurrences
 
 With the environmental predictors finalized, we now introduce the biological data. We utilize the **Global Biodiversity Information Facility (GBIF)** via the `rgbif` package to retrieve georeferenced records of *Canis lupus* (Grey Wolf) within our study regions.
