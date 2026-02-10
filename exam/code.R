@@ -493,12 +493,21 @@ history <- model %>% fit(
   verbose = 1
 )
 
-# Generate the plot
-plot(history)
+# Generate the plot with straight lines (smooth = FALSE)
+# This connects each epoch's data point directly to the next
+history_plot <- plot(history, smooth = FALSE) + 
+  theme_bw() + 
+  labs(title = "CNN Training Metrics")
 
-# Save the current plot to a file
-# High DPI (300) ensures the text and lines are crisp for reports
-ggsave("CNN_Training_History.png", width = 8, height = 6, dpi = 300)
+# Display it in your R session
+print(history_plot)
+
+# Save it as a high-resolution image
+ggsave("CNN_Training_History_Straight.png", 
+       plot = history_plot, 
+       width = 9, 
+       height = 6, 
+       dpi = 300)
 
                              
 # --- 21. EVALUATION & ROC CURVE ---
