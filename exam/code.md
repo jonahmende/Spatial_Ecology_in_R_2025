@@ -1,3 +1,18 @@
+## Introduction: Deep Learning in Spatial Ecology
+
+Predicting the distribution of wide-ranging apex predators like the **Italian Wolf (*Canis lupus*)** requires more than just identifying isolated environmental variables; it requires an understanding of **landscape architecture**. Traditional species distribution models (SDMs) often treat pixels as independent data points, ignoring the spatial relationships between a forest patch, a mountain ridge, and a nearby highway.
+
+This project implements a **Convolutional Neural Network (CNN)** to model wolf habitat suitability across Northern and Central Italy. By treating environmental data as multi-channel images (similar to how facial recognition software views RGB pixels), the CNN can "see" the texture of the terrain. We integrate high-resolution topographic data, human footprint indices, and satellite-derived vegetation layers to train a model capable of recognizing the complex ecological signatures that define a wolf's home range.
+
+### Project Objectives
+
+* **Spatial Context:** Move beyond pixel-based modeling by extracting  pixel "habitat patches" to capture neighborhood effects.
+* **Data Integration:** Harmonize diverse data sources (GBIF, Copernicus, and NASA) into a standardized 500m UTM grid.
+* **Biogeographic Accuracy:** Utilize "Donut Sampling" and spatial thinning to mitigate the observer bias common in citizen-science data.
+* **Predictive Mapping:** Generate a probability-based atlas of wolf presence to inform conservation and human-wildlife conflict mitigation.
+
+
+
 ## 1. Project Initialization and Dependency Management
 
 The first step in any spatial deep learning workflow is establishing a clean environment. This involves setting the working directory to ensure file paths remain consistent and loading a specific suite of libraries designed to handle the complex transition from **geographic rasters** to **neural network tensors**.
@@ -843,5 +858,32 @@ print(results)
 ![CNN Training History](CNN_Training_History_Straight.png)
 
 
+## Discussion & Conclusion
+
+### Critical Performance Review
+
+The CNN approach to Habitat Suitability Modeling (HSM) offers a significant advantage over traditional methods by capturing **spatial context**. While a standard regression looks only at a single point, our CNN evaluated  landscapes, allowing it to recognize complex textures like forest fragmentation and the "buffer" between wilderness and urban pressure.
+
+### Limitations of the Current Model
+
+Despite its sophistication, this model faced several constraints:
+
+* **Data Scarcity:** Deep learning typically requires tens of thousands of samples. With only a few thousand GBIF points, the model is at a constant risk of **overfitting**, essentially memorizing Italian topography rather than learning general wolf behavior.
+* **Resolution Mismatch:** Resampling variables like temperature to a 500m UTM grid introduces interpolation artifacts. If the input "images" are blurry, the convolutional filters cannot detect sharp ecological boundaries.
+* **The "Pseudo-Absence" Dilemma:** Donut sampling assumes that no sighting equals absence. However, wolves are elusive; we may have labeled perfectly suitable (but unvisited) habitats as "absent," providing the model with confusing signals.
+
+### Future Improvements
+
+To move from a "good" pilot study to a "great" conservation tool, the following steps are recommended:
+
+1. **Transfer Learning:** Pre-training the CNN on massive satellite imagery datasets (like Sentinel-2) before fine-tuning it on ecological layers.
+2. **Ensemble Modeling:** Combining the CNN with traditional models (like MaxEnt or Random Forest) to balance spatial pattern recognition with statistical robustness.
+3. **Dynamic Variables:** Incorporating seasonal data (snow cover, prey migration patterns) instead of static annual averages.
+
+---
+
+### Final Verdict
+
+**The CNN is a powerful, high-potential tool.** While it requires more data and computational "babysitting" than traditional methods, its ability to interpret the **structure of a landscape** makes it superior for wide-ranging species like the wolf. It successfully identified the Alpine and Apennine ridges as core corridors, proving that deep learning has a definitive place in modern spatial ecology.
 
 
