@@ -1,3 +1,10 @@
+# A Convolutional Neural Network Approach to Modeling Wolf (*Canis lupus*) Habitat Suitability in the Italian Apennines and Alps
+Spatial Ecology in R (Prof. Duccio Rocchini)
+
+Author: Jonah Mende
+
+
+
 ## Introduction: Deep Learning in Spatial Ecology
 
 Predicting the distribution of wide-ranging apex predators like the **Italian Wolf (*Canis lupus*)** requires more than just identifying isolated environmental variables; it requires an understanding of **landscape architecture**. Traditional species distribution models (SDMs) often treat pixels as independent data points, ignoring the spatial relationships between a forest patch, a mountain ridge, and a nearby highway.
