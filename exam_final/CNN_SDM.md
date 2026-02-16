@@ -1275,5 +1275,949 @@ env_stack_final <- env_stack_scaled[[selected_variables]]
 # Save final stack
 writeRaster(env_stack_final, "env_stack_final_cnn.tif", overwrite = TRUE)
 
+
+---
+
+## 11. Wolf Occurrence Data Acquisition
+
+### Overview
+Wolf presence data is obtained from the Global Biodiversity Information Facility (GBIF), a free and open-access database of species occurrences worldwide. We download georeferenced observations of *Canis lupus* from the 9 study regions in Northern Italy.
+
+**GBIF Database:**
+- **Sources:** Museums, field observations, citizen science (iNaturalist), research projects
+- **Quality:** Variable (includes both verified specimens and casual observations)
+- **Temporal range:** Historical to present (we use all available dates) xxx
+
+**Data Quality Considerations:**
+- Only georeferenced records (`hasCoordinate = TRUE`)
+- Spatial accuracy may vary
+- Spatial bias toward accessible areas (roads, trails)
+- Detection bias (more observations near cities/protected areas)
+- Temporal clustering (multiple observations of same individual)
+
+---
+
+### Configure Patch Parameters
+```r
+# =============================================================================
+# CONFIGURATION - PATCH SIZE FOR CNN
+# =============================================================================
+
+# Patch size determines spatial context around each point
+# Trade-offs:
+#   Small patches (32×32 = 3.2km): Capture local features, faster training
+#   Medium patches (48×48 = 4.8km): Balance local/landscape, moderate speed
+#   Large patches (64×64 = 6.4km): Capture broader context, slower training
+
+PATCH_SIZE <- 48  # Choose: 32, 48, or 64
+
+# Edge buffer = half patch size (prevents edge effects)
+EDGE_BUFFER <- floor(PATCH_SIZE / 2)
+
 ```
 
+**Ecological justification for 48×48:**
+- Captures core activity area (not full home range)
+- Includes den site + surrounding hunting areas
+- Balance between local features and landscape context
+- Comparable to scale of habitat selection studies
+
+---
+
+### Load Environmental Data
+```r
+# =============================================================================
+# LOAD FINAL ENVIRONMENTAL STACK
+# =============================================================================
+
+# Load the final standardized stack (created in previous step)
+# This contains 5 selected variables: NDVI, Roughness, Water_Distance, 
+# Population, Road_Density (or your final selection)
+env_stack_final <- rast("env_stack_final_cnn.tif")
+
+# Load administrative boundaries for cropping and visualization
+italy <- gadm(country = "ITA", level = 1, path = "map_data")
+regions <- italy[italy$NAME_1 %in% c(
+  "Emilia-Romagna", "Toscana", "Lombardia", 
+  "Veneto", "Piemonte", "Trento", "Umbria", 
+  "Marche", "Liguria"
+), ]
+
+# Project regions to match environmental data
+regions <- project(regions, crs(env_stack_final))
+
+```
+
+---
+
+### Download Wolf Occurrences from GBIF
+```r
+# =============================================================================
+# DOWNLOAD WOLF OCCURRENCE DATA FROM GBIF
+# =============================================================================
+
+# Query GBIF database
+wolf_obs <- occ_data(
+  scientificName = "Canis lupus",  # Scientific name
+  hasCoordinate = TRUE,            # Only georeferenced records
+  limit = 5000,                    # Maximum records per region
+  country = "IT",                  # Italy
+  stateProvince = c(               # Our 9 study regions
+    "Emilia-Romagna", 
+    "Toscana", 
+    "Lombardia", 
+    "Veneto", 
+    "Piemonte", 
+    "Trento", 
+    "Umbria", 
+    "Marche", 
+    "Liguria"
+  )
+)
+
+# GBIF returns a list (one element per region query)
+# Combine all into single dataframe
+pres_pts <- bind_rows(lapply(wolf_obs, function(x) x$data))
+
+```
+
+**GBIF Download Summary:**
+- Total records downloaded: [X]
+- Date range: [earliest year] to [latest year]
+- Primary sources:
+  - Museum specimens: [X]%
+  - Field observations: [X]%
+  - Citizen science (iNaturalist): [X]%
+- Coordinate precision: Variable (from <10m to <10km)
+
+**Initial Data Quality Issues:**
+- Records may include:
+  - Multiple observations of same individual
+  - Historical records (pre-extirpation)
+  - Mis-identified species (e.g., dogs, hybrids)
+  - Low-precision coordinates (administrative centroids)
+
+---
+
+### Convert to Spatial Object and Project
+```r
+# =============================================================================
+# CONVERT TO SPATVECTOR AND PROJECT TO UTM
+# =============================================================================
+
+# Convert dataframe to spatial vector
+# Coordinates are in WGS84 (EPSG:4326) decimal degrees
+pres_vect <- vect(
+  pres_pts, 
+  geom = c("decimalLongitude", "decimalLatitude"),  # Column names
+  crs = "EPSG:4326"  # WGS84 geographic coordinates
+)
+
+# Project to match environmental data (UTM Zone 32N)
+pres_vect <- project(pres_vect, crs(env_stack_final))
+
+```
+
+**Coordinate Reference Systems:**
+- **WGS84 (EPSG:4326):** Latitude/longitude in degrees
+  - GBIF default format
+  - Global coverage
+  - Units: degrees (distance calculations inaccurate)
+  
+- **UTM 32N (EPSG:32632):** Universal Transverse Mercator
+  - Projection for Northern Italy
+  - Units: meters (accurate distance calculations)
+  - Minimal distortion in study area
+
+---
+
+### Filter Points Within Study Area
+```r
+# =============================================================================
+# FILTER POINTS WITHIN STUDY AREA (VALID ENVIRONMENTAL DATA)
+# =============================================================================
+
+# Extract environmental values at each wolf location
+# This identifies points that:
+#   1. Fall within study region boundaries
+#   2. Have valid environmental data (not NA)
+extracted_vals <- terra::extract(env_stack_final[[1]], pres_vect)
+
+# Keep only points with non-NA environmental values
+keep_indices <- which(!is.na(extracted_vals[, 2]))
+pres_vect_clean <- pres_vect[keep_indices, ]
+
+```
+
+---
+
+### Spatial Thinning to Reduce Pseudoreplication
+```r
+# =============================================================================
+# SPATIAL THINNING (7 KM GRID)
+# =============================================================================
+
+# Create spatial grid for thinning
+# Grid cell size = 7km (environmental autocorrelation range)
+thinning_grid <- rast(env_stack_final)
+res(thinning_grid) <- 7000  # 7000 meters = 7 km
+
+# Sample one point per grid cell (random selection if multiple points)
+set.seed(123)  # Reproducible sampling
+pres_final <- spatSample(
+  pres_vect_clean, 
+  method = "random",        # Random selection within each cell
+  strata = thinning_grid,   # Use grid as strata
+  size = 1                  # One point per stratum
+)
+
+```
+
+**Why Spatial Thinning?**
+
+**Problem: Spatial Autocorrelation**
+- GPS-collared wolves: 100s of locations per individual
+- Pack territories: Multiple pack members in same area
+- Clustered observations: Repeated visits to kill sites, dens
+- Result: Nearby points are not independent
+
+**Consequences without thinning:**
+- **Pseudoreplication:** Violates assumption of independent samples
+- **Overfitting:** Model memorizes specific locations
+- **Biased estimates:** Overemphasis on well-sampled areas
+- **Poor generalization:** Model fails in new areas
+
+**Solution: Thinning**
+- Keep only one observation per 7×7 km grid cell
+- Reduces spatial autocorrelation
+- Maintains geographic coverage
+- Improves model independence
+
+**Why 7 km grid?**
+- Environmental autocorrelation range considerations
+- Balance: Remove redundancy while retaining sample size
+
+---
+
+## 12. Pseudo-Absence Sampling Strategy
+
+### Overview
+Presence-only data (like GBIF occurrences) cannot distinguish between:
+1. **True absence:** Habitat unsuitable for wolves
+2. **False absence:** Suitable habitat but no detection 
+
+**Solution:** Generate pseudo-absences (background points) representing "available" habitat where wolves were not detected.
+
+**Critical Design Decisions:**
+1. **How far from presences?** Too close = contamination; too far = trivial distinction
+2. **How many?** Equal to presences (balanced) or more (prevalence adjustment)?
+3. **Sampling strategy?** Random, environmentally stratified, or spatially constrained?
+
+We use a **"donut" sampling strategy:**
+- **Exclusion zone (10 km):** Too close to presences (might be used habitat)
+- **Sampling zone (10-30 km):** Ecologically available but not observed
+- **Beyond 30 km:** May be too far (different environmental conditions)
+
+---
+
+### Identify Safe Cells for Sampling
+```r
+# =============================================================================
+# IDENTIFY CANDIDATE CELLS FOR PSEUDO-ABSENCES
+# =============================================================================
+
+# Extract all cells with valid environmental data
+cells_with_data <- as.data.frame(
+  env_stack_final[[1]],  # Use first layer as template
+  xy = TRUE,              # Include coordinates
+  na.rm = TRUE,           # Exclude NA cells
+  cells = TRUE            # Include cell indices
+)
+
+# Apply edge buffer to avoid extracting patches that extend outside study area
+# This prevents edge effects where patches would include NA values
+rc <- rowColFromCell(env_stack_final, cells_with_data$cell)
+
+valid_indices <- which(
+  rc[, 1] > EDGE_BUFFER & 
+  rc[, 1] < (nrow(env_stack_final) - EDGE_BUFFER) & 
+  rc[, 2] > EDGE_BUFFER & 
+  rc[, 2] < (ncol(env_stack_final) - EDGE_BUFFER)
+)
+
+cells_safe <- cells_with_data[valid_indices, ]
+
+```
+
+**Edge Buffer Rationale:**
+
+**Why buffer edges?**
+- CNN patches extend ±EDGE_BUFFER pixels from center
+- Patches centered near edges would include pixels outside study area
+- Outside pixels = NA values = data quality issues
+
+**Example (48×48 patches):**
+- EDGE_BUFFER = 24 pixels = 2.4 km
+- Prevents sampling within 2.4 km of study area boundary
+- Ensures all patches have complete environmental data
+
+---
+
+### Create Donut Buffer Around Presences
+```r
+# =============================================================================
+# CREATE DONUT BUFFER (10-30 KM) FOR PSEUDO-ABSENCE SAMPLING
+# =============================================================================
+
+# Inner buffer: 10 km radius (exclusion zone)
+# Rationale: Wolves may use habitat within 10km of GPS locations
+pres_buffer_inner <- aggregate(buffer(pres_final, width = 10000))
+
+# Outer buffer: 30 km radius (sampling zone)
+# Rationale: Habitat within 30km is ecologically "available"
+# aggregate() merges overlapping buffers into single polygons
+pres_buffer_outer <- aggregate(buffer(pres_final, width = 30000))
+
+```
+
+**Buffer Parameters:**
+
+| Zone | Distance | Rationale | Wolf Behavior |
+|------|----------|-----------|---------------|
+| **Core (0-10 km)** | EXCLUDED | Too close to known presence | Daily movement range; may be part of territory |
+| **Donut (10-30 km)** | SAMPLED | Available but unused | Beyond daily range; dispersal distance; potential habitat |
+| **Far (>30 km)** | EXCLUDED | Too far; different environment | Rarely reached; may represent different population |
+
+---
+
+### Apply Donut Filter
+```r
+# =============================================================================
+# IDENTIFY CELLS IN DONUT ZONE
+# =============================================================================
+
+# Convert safe cells to spatial vector for spatial queries
+cells_safe_vect <- vect(
+  cells_safe, 
+  geom = c("x", "y"),          # Coordinate columns
+  crs = crs(env_stack_final)   # Match projection
+)
+
+# Spatial query: Which cells intersect outer buffer?
+inside_outer <- is.related(
+  cells_safe_vect, 
+  pres_buffer_outer, 
+  "intersects"  # TRUE if cell intersects buffer
+)
+
+# Spatial query: Which cells intersect inner buffer?
+inside_inner <- is.related(
+  cells_safe_vect, 
+  pres_buffer_inner, 
+  "intersects"
+)
+
+# Donut logic: Inside outer AND outside inner
+is_in_donut <- inside_outer & !inside_inner
+
+# Filter to donut cells only
+cells_safe_filtered <- cells_safe[is_in_donut, ]
+
+```
+
+---
+
+### Sample Balanced Pseudo-Absences
+```r
+# =============================================================================
+# SAMPLE PSEUDO-ABSENCES (1:1 RATIO WITH PRESENCES)
+# =============================================================================
+
+# Number of absences = number of presences (balanced design)
+n_absences <- nrow(pres_final)
+
+# Random sample from donut zone
+set.seed(123)  # Reproducible sampling
+abs_sample_indices <- sample(
+  nrow(cells_safe_filtered),  # Sample from all donut cells
+  size = n_absences,          # Number to sample
+  replace = FALSE             # No replacement (each cell used once)
+)
+
+# Extract coordinates of sampled cells
+abs_coords <- cells_safe_filtered[abs_sample_indices, c("x", "y")]
+
+# Create SpatVector of pseudo-absences
+abs_final <- vect(
+  abs_coords, 
+  geom = c("x", "y"), 
+  crs = crs(env_stack_final)
+)
+
+```
+
+**Sampling Design:**
+- 1:1 Balance
+- Equal number of presences and absences
+- Prevents model bias toward majority class
+
+---
+
+### Visualize Sampling Strategy
+```r
+# =============================================================================
+# VISUALIZATION: SAMPLING STRATEGY MAP
+# =============================================================================
+
+# Create comprehensive map
+wolf_sampling_plot <- ggplot() +
+  # Base layer: Administrative boundaries
+  geom_spatvector(
+    data = regions, 
+    fill = "gray98", 
+    color = "gray80"
+  ) +
+  
+  # Sampling zone (30 km buffer)
+  geom_spatvector(
+    data = pres_buffer_outer, 
+    aes(fill = "Sampling Zone (0-30 km)"), 
+    alpha = 0.3, 
+    color = NA
+  ) +
+  
+  # Exclusion zone (10 km buffer)
+  geom_spatvector(
+    data = pres_buffer_inner, 
+    aes(fill = "Exclusion Zone (0-10 km)"), 
+    color = "red", 
+    linewidth = 0.2, 
+    alpha = 0.5
+  ) +
+  
+  # Pseudo-absences
+  geom_spatvector(
+    data = abs_final, 
+    aes(color = "Pseudo-Absence"), 
+    size = 0.8, 
+    alpha = 0.7
+  ) +
+  
+  # Wolf presences
+  geom_spatvector(
+    data = pres_final, 
+    aes(color = "Wolf Presence"), 
+    size = 1.2, 
+    shape = 17  # Triangle
+  ) +
+  
+  # Color scales
+  scale_fill_manual(
+    name = "Buffer Zones", 
+    values = c(
+      "Sampling Zone (0-30 km)" = "lightblue", 
+      "Exclusion Zone (0-10 km)" = "white"
+    )
+  ) +
+  scale_color_manual(
+    name = "Observations", 
+    values = c(
+      "Wolf Presence" = "red", 
+      "Pseudo-Absence" = "darkblue"
+    )
+  ) +
+  
+  # Labels and theme
+  labs(
+    title = "Wolf Habitat Sampling Strategy",
+    subtitle = paste0(
+      "7 km spatial thinning | 10-30 km donut sampling | ", 
+      PATCH_SIZE, "×", PATCH_SIZE, " pixel patches (", 
+      PATCH_SIZE * 0.1, " km)"
+    ),
+    x = "Longitute",
+    y = "Latitude"
+  ) +
+  theme_bw() + 
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 11),
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 11),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+# Add scale bar and north arrow
+wolf_sampling_plot_final <- wolf_sampling_plot +
+  annotation_scale(
+    location = "bl",       # Bottom-left
+    width_hint = 0.4,      # 40% of plot width
+    unit_category = "metric"  # km scale
+  ) +
+  annotation_north_arrow(
+    location = "bl",       # Bottom-left
+    which_north = "true",  # True north (not magnetic)
+    pad_x = unit(0.2, "in"), 
+    pad_y = unit(0.4, "in"),
+    style = north_arrow_fancy_orienteering
+  )
+
+# Display
+print(wolf_sampling_plot_final)
+
+# Save high-resolution
+ggsave(
+  "plots/wolf_sampling_strategy.png", 
+  plot = wolf_sampling_plot_final, 
+  width = 12, 
+  height = 10, 
+  units = "in", 
+  dpi = 300
+)
+
+```
+
+### Results
+[INSERT: Map showing study area with colored buffer zones, red triangles for presences, blue dots for pseudo-absences]
+
+---
+
+## 13. Train/Validation/Test Split (Stratified)
+
+### Overview
+Before extracting CNN patches, we must split the data into three independent sets:
+
+1. **Training set (70%):** Used to train the model (update weights)
+2. **Validation set (15%):** Used to tune hyperparameters and prevent overfitting
+3. **Test set (15%):** Used only once for final evaluation (unbiased performance estimate)
+
+**Critical requirement:** Split must be **stratified** to maintain class balance (50% presence, 50% absence) in all three sets.
+
+**Why stratified splitting?**
+- Prevents class imbalance in any set
+- Ensures representative samples in train/val/test
+
+---
+
+### Combine Presences and Absences
+```r
+# =============================================================================
+# COMBINE AND LABEL DATA
+# =============================================================================
+
+# Add label column to presence points
+pres_final$label <- 1  # 1 = Presence (wolf observed)
+
+# Add label column to absence points
+abs_final$label <- 0   # 0 = Pseudo-absence (wolf not observed)
+
+# Combine into single dataset
+all_pts <- rbind(
+  pres_final[, "label"],  # Keep only label column (geometry preserved)
+  abs_final[, "label"]
+)
+
+```
+
+**Combined Dataset:**
+- **Total observations:** [Xxx]
+- **Presences:** [X] (50%)
+- **Absences:** [X] (50%)
+- **Spatial extent:** Entire study area (9 regions)
+- **Temporal range:** All GBIF dates (filtered by spatial thinning)
+
+---
+
+### Stratified Splitting Function
+```r
+# =============================================================================
+# STRATIFIED TRAIN/VAL/TEST SPLIT (70/15/15)
+# =============================================================================
+
+# Separate indices by class
+pres_indices <- which(all_pts$label == 1)  # All presence indices
+abs_indices <- which(all_pts$label == 0)   # All absence indices
+
+# Function to create stratified splits for one class
+get_stratified_splits <- function(idx_vector) {
+  set.seed(42)  # Reproducible splits
+  
+  # Shuffle indices randomly
+  shuffled_idx <- sample(idx_vector)
+  n <- length(shuffled_idx)
+  
+  # Calculate split boundaries
+  # 70% train, 15% val, 15% test
+  train_end <- round(0.70 * n)
+  val_end <- round(0.85 * n)
+  
+  # Assign to splits
+  train_idx <- shuffled_idx[1:train_end]
+  val_idx <- shuffled_idx[(train_end + 1):val_end]
+  test_idx <- shuffled_idx[(val_end + 1):n]
+  
+  return(list(
+    train = train_idx, 
+    val = val_idx, 
+    test = test_idx
+  ))
+}
+
+# Apply to both presences and absences independently
+pres_split <- get_stratified_splits(pres_indices)
+abs_split <- get_stratified_splits(abs_indices)
+
+```
+
+**Stratification Logic:**
+
+**Step-by-step process:**
+1. Separate presences from absences
+2. Shuffle each class independently (randomize order)
+3. Split each class 70/15/15
+4. Result: Each split has 50% presences, 50% absences
+
+**Why shuffle before splitting?**
+- GBIF data may be temporally or spatially ordered
+- Shuffling prevents systematic bias in splits
+- Ensures random assignment to train/val/test
+
+---
+
+### Assign Split Labels
+```r
+# =============================================================================
+# ASSIGN SPLIT LABELS TO ALL POINTS
+# =============================================================================
+
+# Initialize split column
+all_pts$split <- NA
+
+# Assign training points (presences + absences)
+all_pts$split[c(pres_split$train, abs_split$train)] <- "train"
+
+# Assign validation points
+all_pts$split[c(pres_split$val, abs_split$val)] <- "val"
+
+# Assign test points
+all_pts$split[c(pres_split$test, abs_split$test)] <- "test"
+
+```
+
+**Stratification Table:**
+
+| Split | Absence (0) | Presence (1) | Total | % Presence |
+|-------|-------------|--------------|-------|------------|
+| Train | [Xxx] | [X] | [X] | 50.0%  |
+| Val | [X] | [X] | [X] | 50.0%  |
+| Test | [X] | [X] | [X] | 50.0%  |
+
+---
+
+## 14. CNN Patch Extraction
+
+### Overview
+For each wolf observation point (presence or absence), we extract a square patch of environmental data centered on that point. These patches become the input images for the CNN.
+
+**Patch Extraction Process:**
+1. Locate cell containing the observation point
+2. Extract surrounding pixels (±EDGE_BUFFER in all directions)
+3. Create 4D array: [samples, height, width, channels]
+4. Handle edge cases and missing data
+
+**4D Array Structure:**
+```
+Dimensions: [n_samples, patch_height, patch_width, n_variables]
+Example (48×48, 5 vars, 100 points): [100, 48, 48, 5]
+```
+
+**Why 4D?**
+- **Dimension 1 (samples):** Each observation point (train/val/test)
+- **Dimension 2 (height):** North-south pixels (48 for 48×48 patch)
+- **Dimension 3 (width):** East-west pixels (48 for 48×48 patch)
+- **Dimension 4 (channels):** Environmental variables (5 in our case)
+
+This matches CNN input requirements (images with multiple channels).
+
+---
+
+### Patch Extraction Function
+```r
+# =============================================================================
+# FUNCTION TO EXTRACT PATCHES FOR EACH SPLIT
+# =============================================================================
+
+extract_split_tiles <- function(pts_vector, split_label, stack, 
+                               patch_size = PATCH_SIZE) {
+  # Extract patches for one split (train, val, or test)
+  
+  # Filter points belonging to this split
+  subset_pts <- pts_vector[pts_vector$split == split_label, ]
+  
+  # Extract coordinates and labels
+  coords <- crds(subset_pts)  # Get x,y coordinates
+  labels <- subset_pts$label  # Get presence/absence labels
+  n_pts <- nrow(subset_pts)   # Number of points in this split
+  n_layers <- nlyr(stack)     # Number of environmental variables
+  
+  cat("   Extracting patches for:", split_label, "\n")
+  
+  # Initialize 4D array for patches
+  # Dimensions: [samples, height, width, channels]
+  tiles <- array(0, dim = c(n_pts, patch_size, patch_size, n_layers))
+  
+  # Calculate buffer size (half patch on each side)
+  half_patch <- floor(patch_size / 2)
+  
+  # Extract patch for each point
+  for (i in 1:n_pts) {
+    
+    # Progress indicator (every 50 points)
+    if (i %% 50 == 0) {
+      cat("      Processed", i, "/", n_pts, "patches\r")
+    }
+    
+    # Find cell index containing this point
+    cell <- cellFromXY(stack, coords[i, , drop = FALSE])
+    
+    # Convert cell index to row/column
+    rc <- rowColFromCell(stack, cell)
+    
+    # Define pixel ranges for patch
+    # For 48×48 patch centered on cell (24,24):
+    # Rows: (24-23) to (24+24) = 1 to 48 (48 pixels)
+    # Cols: (24-23) to (24+24) = 1 to 48 (48 pixels)
+    rows <- (rc[1] - half_patch + 1):(rc[1] + half_patch)
+    cols <- (rc[2] - half_patch + 1):(rc[2] + half_patch)
+    
+    # Extract patch values
+    try({
+      # Extract rectangular subset of raster
+      patch_vals <- stack[rows, cols, 1:n_layers]
+      
+      # Convert to array and assign to tiles
+      # as.matrix converts dataframe/raster to numeric matrix
+      tiles[i, , , ] <- array(
+        as.matrix(patch_vals), 
+        dim = c(patch_size, patch_size, n_layers)
+      )
+    }, silent = TRUE)  # Silently skip if extraction fails
+  }
+  
+  cat("      Completed:", n_pts, "patches\n")
+  
+  # Replace any remaining NAs with 0
+  # NAs can occur at patch edges or in water bodies
+  tiles[is.na(tiles)] <- 0
+    
+  # Count NA replacements
+  n_zeros <- sum(tiles == 0)
+  total_values <- length(tiles)
+  pct_zeros <- round(n_zeros / total_values * 100, 2)
+  
+  # Return patches (x) and labels (y)
+  return(list(
+    x = tiles,           # 4D array of patches
+    y = as.numeric(labels)  # 1D vector of labels
+  ))
+}
+```
+
+**Function Logic:**
+
+**Step 1: Filter points**
+- Extract only points belonging to specified split (train/val/test)
+- Preserve spatial coordinates and labels
+
+**Step 2: Initialize array**
+- Pre-allocate memory for efficiency
+- Filled with zeros (updated during extraction)
+
+**Step 3: Extract each patch**
+- Find raster cell containing point
+- Calculate surrounding cell indices (±half_patch)
+- Extract rectangular subset from all layers
+- Store in 4D array
+
+**Step 4: Handle missing data**
+- Some patches may have NAs 
+- Replace NA with 0 (standardized data: 0 = mean value)
+
+---
+
+### Extract Patches for All Splits
+```r
+# =============================================================================
+# EXTRACT PATCHES FOR TRAIN, VALIDATION, AND TEST SETS
+# =============================================================================
+
+# Extract training patches
+train_data <- extract_split_tiles(all_pts, "train", env_stack_final)
+
+# Extract validation patches
+val_data <- extract_split_tiles(all_pts, "val", env_stack_final)
+
+# Extract test patches
+test_data <- extract_split_tiles(all_pts, "test", env_stack_final)
+
+```
+
+---
+
+### Assign to Final Variables
+```r
+# =============================================================================
+# PREPARE DATA FOR CNN TRAINING
+# =============================================================================
+
+# Training data
+x_train <- train_data$x  # 4D array of patches
+y_train <- train_data$y  # 1D vector of labels (0 or 1)
+
+# Validation data
+x_val <- val_data$x
+y_val <- val_data$y
+
+# Test data
+x_test <- test_data$x
+y_test <- test_data$y
+
+```
+
+---
+
+### Visual Inspection of Sample Patches
+```r
+# =============================================================================
+# VISUALIZE SAMPLE PATCHES
+# =============================================================================
+
+# Function to plot a single patch
+plot_patch <- function(patch_3d, var_idx, var_name, label) {
+  # Extract one variable from 3D patch
+  patch_2d <- patch_3d[, , var_idx]
+  
+  # Create raster for plotting
+  r <- rast(patch_2d)
+  
+  # Plot
+  plot(r, 
+       main = paste0(var_name, " (", 
+                    ifelse(label == 1, "Presence", "Absence"), ")"),
+       col = viridis::viridis(100),
+       legend = TRUE)
+}
+
+# Plot first 3 training patches (1 presence, 1 absence)
+par(mfrow = c(2, nlyr(env_stack_final)))
+
+# Presence example
+pres_idx <- which(y_train == 1)[1]  # First presence
+for (i in 1:nlyr(env_stack_final)) {
+  plot_patch(x_train[pres_idx, , , ], i, var_names[i], 1)
+}
+
+# Absence example
+abs_idx <- which(y_train == 0)[1]  # First absence
+for (i in 1:nlyr(env_stack_final)) {
+  plot_patch(x_train[abs_idx, , , ], i, var_names[i], 0)
+}
+
+par(mfrow = c(1, 1))
+
+```
+
+### Results
+[INSERT: Grid of patches showing presence vs absence examples for each variable]
+
+---
+
+### Save Processed Data
+```r
+# =============================================================================
+# SAVE PROCESSED DATA FOR CNN TRAINING
+# =============================================================================
+
+
+# Save as RDS (R binary format - preserves exact structure)
+saveRDS(
+  list(
+    x_train = x_train,
+    y_train = y_train,
+    x_val = x_val,
+    y_val = y_val,
+    x_test = x_test,
+    y_test = y_test,
+    patch_size = PATCH_SIZE,
+    variables = var_names,
+    n_variables = nlyr(env_stack_final)
+  ), 
+  "cnn_data.rds"
+)
+
+# Save point locations as shapefiles (for GIS)
+writeVector(all_pts, "wolf_points_all.shp", overwrite = TRUE)
+writeVector(pres_final, "wolf_points_presence.shp", overwrite = TRUE)
+writeVector(abs_final, "wolf_points_absence.shp", overwrite = TRUE)
+
+```
+
+**Files created:**
+- `cnn_data.rds`: All training/val/test data in R format (~370 MB)
+- `wolf_points_all.shp`: All points with labels and split assignments
+- `wolf_points_presence.shp`: Wolf presence points (n = [X])
+- `wolf_points_absence.shp`: Pseudo-absence points (n = [X])
+
+---
+
+## Final Summary
+
+### Data Preparation Complete! 🎉
+
+**Environmental Variables:**
+- Total variables collected: 10 (elevation, slope, roughness, temperature, NDVI, population, road density, railway density, water distance, landuse)
+- Variables selected for CNN: 3 (NDVI, roughness, road density)
+- Resolution: 100m × 100m
+- Projection: UTM Zone 32N (EPSG:32632)
+- Standardization: Z-score (mean = 0, sd = 1)
+
+**Wolf Occurrence Data:**
+- Source: GBIF (*Canis lupus* in Northern Italy)
+- Raw downloads: [Xxx] records
+- After filtering: [X] points
+- After spatial thinning: [X] points
+- Thinning distance: 7 km
+- Pseudo-absences: [X] points (1:1 ratio)
+- Sampling strategy: 10-30 km donut buffer
+
+**CNN Patches:**
+- Patch size: 48 × 48 pixels (4.8 km × 4.8 km)
+- Area per patch: 23.0 km²
+- Training samples: [Xxx] (70%)
+- Validation samples: [X] (15%)
+- Test samples: [X] (15%)
+- Class balance: 50% presence, 50% absence in all splits
+
+**Files Created:**
+1. `environmental_stack_100m.tif` - Original environmental variables
+2. `env_stack_scaled_100m.tif` - Standardized variables
+3. `env_stack_final_cnn.tif` - Final 5-variable stack
+4. `scaling_parameters.csv` - Standardization parameters
+5. `cnn_data.rds` - Training/val/test data
+6. `wolf_points_*.shp` - Point locations for GIS
+
+**Ready for CNN Training! 🧠**
+
+The next step is to build and train the Convolutional Neural Network using this prepared data.
+
+---
+
+**Next steps:**
+1. Design CNN architecture (number of layers, filters, etc.)
+2. Compile model (optimizer, loss function, metrics)
+3. Train with early stopping and learning rate scheduling
+4. Evaluate on test set
+5. Generate habitat suitability maps for entire study area
+
+Would you like me to create the CNN training section as well?
