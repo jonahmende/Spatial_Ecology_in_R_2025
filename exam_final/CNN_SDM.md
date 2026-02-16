@@ -894,11 +894,6 @@ Where:
 # LOAD ALL ENVIRONMENTAL VARIABLES (100m RESOLUTION)
 # =============================================================================
 
-library(terra)
-library(dplyr)
-
-cat("📥 Loading all environmental layers...\n")
-
 # Load individual layers
 elevation <- rast("elevation_100m.tif")
 slope <- rast("slope_100m.tif")
@@ -911,32 +906,6 @@ railway_density <- rast("railway_density_100m.tif")
 water_distance <- rast("water_distance_100m.tif")
 landuse <- rast("landuse_wolf_habitat_100m.tif")
 
-cat("✅ All layers loaded\n\n")
-```
-
-**Quality Control Check:**
-```r
-# Verify all layers have same properties
-cat("Checking layer alignment...\n")
-
-layers <- list(elevation, slope, roughness, temperature, ndvi, 
-              population, road_density, railway_density, water_distance)
-
-# Check if all have same extent and resolution
-all_aligned <- all(sapply(layers[-1], function(x) {
-  compareGeom(layers[[1]], x, stopOnError = FALSE)
-}))
-
-if (all_aligned) {
-  cat("✅ All layers perfectly aligned\n")
-} else {
-  cat("⚠️  Layers not aligned - checking which ones...\n")
-  for (i in 2:length(layers)) {
-    if (!compareGeom(layers[[1]], layers[[i]], stopOnError = FALSE)) {
-      cat("  Layer", i, "misaligned\n")
-    }
-  }
-}
 ```
 
 ---
@@ -947,7 +916,7 @@ if (all_aligned) {
 # Resample to match 100m grid
 
 if (!compareGeom(elevation, ndvi, stopOnError = FALSE)) {
-  cat("⚠️  NDVI has different geometry - resampling to 100m grid...\n")
+  cat("NDVI has different geometry - resampling to 100m grid...\n")
   
   ndvi <- resample(
     ndvi, 
@@ -955,9 +924,9 @@ if (!compareGeom(elevation, ndvi, stopOnError = FALSE)) {
     method = "bilinear"  # Smooth interpolation for continuous data
   )
   
-  cat("✅ NDVI resampled to match other layers\n\n")
+  cat("NDVI resampled to match other layers\n\n")
 } else {
-  cat("✅ NDVI already aligned with other layers\n\n")
+  cat("NDVI already aligned with other layers\n\n")
 }
 ```
 
@@ -1005,18 +974,7 @@ names(env_stack) <- c(
 # Save unstandardized stack (for reference)
 writeRaster(env_stack, "environmental_stack_100m.tif", overwrite = TRUE)
 
-cat("✅ Environmental stack created:\n")
-cat("   Layers:", nlyr(env_stack), "\n")
-cat("   Resolution:", res(env_stack)[1], "m\n")
-cat("   Total cells:", format(ncell(env_stack[[1]]), big.mark = ","), "\n")
-cat("   File size:", round(file.size("environmental_stack_100m.tif") / 1e6, 1), "MB\n\n")
 ```
-
-**Stack Properties:**
-- **Dimensions:** [X] rows × [X] columns
-- **Total pixels:** [X] million per layer
-- **Total cells:** [X] million × 9 variables = [X] million values
-- **Memory:** ~[X] GB in RAM when fully loaded
 
 ---
 
@@ -1025,8 +983,6 @@ cat("   File size:", round(file.size("environmental_stack_100m.tif") / 1e6, 1), 
 # =============================================================================
 # Z-SCORE STANDARDIZATION FOR CNN
 # =============================================================================
-
-cat("📊 Performing Z-Score standardization...\n\n")
 
 # Initialize empty stack for standardized layers
 env_stack_scaled <- rast()
@@ -1088,8 +1044,6 @@ names(env_stack_scaled) <- names(env_stack)
 # Save standardized stack
 writeRaster(env_stack_scaled, "env_stack_scaled_100m.tif", overwrite = TRUE)
 
-cat("✅ Standardization complete\n")
-cat("   Saved: env_stack_scaled_100m.tif\n\n")
 ```
 
 **Standardization Results:**
@@ -1114,12 +1068,8 @@ cat("   Saved: env_stack_scaled_100m.tif\n\n")
 # SAVE SCALING PARAMETERS (CRITICAL FOR LATER!)
 # =============================================================================
 
-cat("💾 Saving scaling parameters...\n")
-
 # Save as CSV for easy inspection
 write.csv(scaling_params, "scaling_parameters.csv", row.names = FALSE)
-
-cat("✅ Saved: scaling_parameters.csv\n\n")
 
 # Display scaling parameters
 cat("Scaling parameters:\n")
@@ -1139,69 +1089,7 @@ These parameters are **essential** for:
 # To convert standardized value back to original:
 original_value = (standardized_value × SD) + Mean
 
-# Example for elevation:
-# If standardized = 2.5, mean = 800m, sd = 400m
-# Then: original = (2.5 × 400) + 800 = 1800m
 ```
-
----
-
-### Visualization: Standardized vs Original
-```r
-# =============================================================================
-# VISUALIZE STANDARDIZATION EFFECT
-# =============================================================================
-
-library(ggplot2)
-library(tidyterra)
-library(patchwork)
-
-cat("📊 Creating comparison visualization...\n")
-
-# Function to create side-by-side plots
-plot_comparison <- function(original, standardized, var_name) {
-  p1 <- ggplot() +
-    geom_spatraster(data = original) +
-    scale_fill_viridis_c(na.value = "gray90") +
-    labs(title = paste0(var_name, " (Original)"), fill = "") +
-    theme_minimal()
-  
-  p2 <- ggplot() +
-    geom_spatraster(data = standardized) +
-    scale_fill_viridis_c(na.value = "gray90") +
-    labs(title = paste0(var_name, " (Standardized)"), fill = "Z-Score") +
-    theme_minimal()
-  
-  return(p1 | p2)
-}
-
-# Example: Compare elevation
-comparison_elev <- plot_comparison(
-  env_stack[["Elevation"]], 
-  env_stack_scaled[["Elevation"]], 
-  "Elevation"
-)
-
-print(comparison_elev)
-ggsave("plots/standardization_comparison_elevation.png", 
-       width = 12, height = 5, dpi = 300)
-```
-
-### Results
-[INSERT: Side-by-side comparison of original vs standardized elevation]
-
-**Key observations:**
-- Spatial patterns identical (only scale changes)
-- Standardized values typically range from -3 to +3
-- Most values within ±2 standard deviations (95% of data)
-- Extreme values (mountain peaks, urban centers) show as outliers
-
-**Interpretation of standardized values:**
-- **Z = 0:** Average value for the study area
-- **Z = +1:** One standard deviation above mean
-- **Z = -1:** One standard deviation below mean
-- **Z > +2:** Unusually high (top ~2.5% of values)
-- **Z < -2:** Unusually low (bottom ~2.5% of values)
 
 ---
 
@@ -1211,10 +1099,6 @@ ggsave("plots/standardization_comparison_elevation.png",
 # RIDGELINE PLOT OF STANDARDIZED DISTRIBUTIONS
 # =============================================================================
 
-library(imageRy)
-
-cat("📊 Creating ridgeline plot of standardized distributions...\n")
-
 # Downsample for visualization (full resolution too slow)
 # Aggregate to 500m (factor of 5)
 env_stack_agg <- aggregate(
@@ -1223,9 +1107,6 @@ env_stack_agg <- aggregate(
   fun = "mean",          # Average values in 5×5 windows
   na.rm = TRUE
 )
-
-cat("  Downsampled from", res(env_stack_scaled)[1], "m to", 
-    res(env_stack_agg)[1], "m for visualization\n")
 
 # Create ridgeline plot using imageRy function
 ridge_plot <- im.ridgeline(
@@ -1259,26 +1140,11 @@ print(ridge_plot)
 ggsave("plots/ridgeline_standardized.png", ridge_plot, 
        width = 12, height = 10, dpi = 300)
 
-cat("✅ Ridgeline plot saved\n\n")
 ```
 
 ### Results
 [INSERT: Ridgeline plot showing standardized distributions]
 
-**Distribution characteristics:**
-
-**Normal-like distributions:**
-- Elevation, Temperature: Approximately normal (bell-shaped)
-- NDVI: Slightly left-skewed (more high values)
-
-**Right-skewed distributions:**
-- Population: Extreme right skew (most areas have 0-10 people)
-- Road/Railway Density: Right-skewed (sparse in mountains)
-- Water Distance: Right-skewed (most areas near water)
-
-**Multi-modal distributions:**
-- Slope: Bimodal (flat valleys vs steep mountains)
-- Roughness: Multiple peaks (different terrain types)
 
 **Implications for CNN:**
 - Skewed variables still standardized (mean = 0, sd = 1)
@@ -1306,8 +1172,6 @@ Identify and remove highly correlated variables to:
 # SAMPLE DATA FOR CORRELATION MATRIX
 # =============================================================================
 
-cat("📊 Sampling data for correlation analysis...\n")
-
 # Sample 50,000 pixels (sufficient for stable correlation estimates)
 n_sample <- 50000
 
@@ -1333,10 +1197,6 @@ sample_data <- sample_data %>%
   select(-cell) %>%
   na.omit()
 
-cat("✅ Sample data prepared:\n")
-cat("   Sampled pixels:", n_sample, "\n")
-cat("   Valid pixels (no NAs):", nrow(sample_data), "\n")
-cat("   Variables:", ncol(sample_data), "\n\n")
 ```
 
 **Sampling Strategy:**
@@ -1353,17 +1213,11 @@ cat("   Variables:", ncol(sample_data), "\n\n")
 # COMPUTE PEARSON CORRELATION MATRIX
 # =============================================================================
 
-cat("🔢 Computing correlation matrix...\n")
-
 # Calculate pairwise Pearson correlations
 cor_matrix <- cor(sample_data, use = "complete.obs")
 
-cat("✅ Correlation matrix computed\n\n")
-
 # Display correlation matrix (rounded for readability)
-cat("Correlation matrix:\n")
 print(round(cor_matrix, 2))
-cat("\n")
 ```
 
 **Correlation Matrix Interpretation:**
@@ -1379,10 +1233,6 @@ cat("\n")
 # =============================================================================
 # CORRELATION PLOT (CORRPLOT)
 # =============================================================================
-
-library(corrplot)
-
-cat("📊 Creating correlation plot...\n")
 
 # Create high-resolution correlation plot
 png("plots/correlation_matrix.png", width = 3000, height = 3000, res = 300)
@@ -1404,180 +1254,10 @@ corrplot(
 
 dev.off()
 
-cat("✅ Correlation plot saved: plots/correlation_matrix.png\n\n")
 ```
 
 ### Results
 [INSERT: Correlation matrix heatmap]
-
-**Key correlations identified:**
-
-**Strong positive correlations (r > 0.7):**
-- [Variable 1] ↔ [Variable 2]: r = [X] (explain why)
-- [Variable 3] ↔ [Variable 4]: r = [X] (explain why)
-
-**Strong negative correlations (r < -0.7):**
-- [Variable A] ↔ [Variable B]: r = [X] (explain why)
-
-**Weak correlations (|r| < 0.3):**
-- Most variable pairs show weak correlation (good!)
-- Indicates variables capture different aspects of habitat
-
-**Ecological interpretation:**
-- Expected correlations: 
-  - Elevation ↔ Temperature (negative, due to lapse rate)
-  - Elevation ↔ Population (negative, people live in valleys)
-  - Road ↔ Railway Density (positive, both follow transport corridors)
-
-- Unexpected correlations:
-  - [If any surprising correlations found, explain]
-
----
-
-### Identify Highly Correlated Variables
-```r
-# =============================================================================
-# FIND HIGH-CORRELATION PAIRS
-# =============================================================================
-
-cat("⚠️  IDENTIFYING HIGHLY CORRELATED VARIABLES (|r| > 0.7)\n")
-cat(rep("=", 70), "\n\n", sep = "")
-
-# Find all pairs with |correlation| > 0.7 (excluding diagonal)
-high_cor <- which(
-  abs(cor_matrix) > 0.7 & cor_matrix != 1, 
-  arr.ind = TRUE
-)
-
-if (nrow(high_cor) > 0) {
-  # Create dataframe of high-correlation pairs
-  high_cor_pairs <- data.frame(
-    Var1 = rownames(cor_matrix)[high_cor[, 1]],
-    Var2 = colnames(cor_matrix)[high_cor[, 2]],
-    Correlation = cor_matrix[high_cor]
-  ) %>%
-    filter(Var1 < Var2) %>%  # Remove duplicates (A-B and B-A)
-    arrange(desc(abs(Correlation)))
-  
-  cat("High-correlation pairs found:\n")
-  print(high_cor_pairs)
-  
-  cat("\n💡 RECOMMENDATION:\n")
-  cat("Variables with |r| > 0.7 provide redundant information.\n")
-  cat("Consider removing one variable from each pair.\n")
-  cat("Choose which to keep based on:\n")
-  cat("  1. Ecological relevance for wolves\n")
-  cat("  2. Data quality and completeness\n")
-  cat("  3. Ease of interpretation\n\n")
-  
-} else {
-  cat("✅ No variable pairs with |r| > 0.7 found\n")
-  cat("   All variables are sufficiently independent\n\n")
-}
-```
-
-**Decision Matrix for Variable Selection:**
-
-If **Elevation** and **Temperature** are highly correlated (r = -0.8):
-- **Keep Elevation** because:
-  - More direct ecological relevance (wolves select elevation)
-  - More stable (climate can vary year-to-year)
-  - Better spatial resolution (SRTM vs WorldClim)
-- **Remove Temperature**
-
-If **Road Density** and **Population** are highly correlated (r = 0.75):
-- **Keep Population** because:
-  - More comprehensive human footprint metric
-  - Roads can exist in unpopulated areas (mountain passes)
-  - Population better predicts wolf avoidance
-- **Remove Road Density**
-
----
-
-### Variable Selection Based on Correlation
-```r
-# =============================================================================
-# SELECT FINAL VARIABLES FOR CNN
-# =============================================================================
-
-cat(rep("=", 70), "\n", sep = "")
-cat("🎯 VARIABLE SELECTION FOR CNN\n")
-cat(rep("=", 70), "\n\n", sep = "")
-
-# Based on correlation analysis, select variables to keep
-# Example selection (adjust based on your actual results):
-
-selected_variables <- c(
-  "NDVI",               # Vegetation productivity (prey habitat)
-  "Roughness",          # Terrain complexity (cover, denning)
-  "Water_Distance",     # Essential resource
-  "Population",         # Human disturbance (comprehensive metric)
-  "Road_Density"        # Linear barriers (if not too correlated with population)
-)
-
-cat("Selected variables:\n")
-for (v in selected_variables) {
-  cat("  ✅", v, "\n")
-}
-cat("\n")
-
-# Variables removed (if any)
-removed_variables <- setdiff(names(env_stack_scaled), selected_variables)
-
-if (length(removed_variables) > 0) {
-  cat("Removed variables (redundant or low importance):\n")
-  for (v in removed_variables) {
-    cat("  ❌", v, "\n")
-  }
-  cat("\n")
-}
-
-cat("Final variable count:", length(selected_variables), "\n")
-cat("Reduction:", nlyr(env_stack_scaled) - length(selected_variables), 
-    "variables removed\n\n")
-```
-
-**Rationale for Final Selection:**
-
-**NDVI (✅ KEEP):**
-- Unique information: Vegetation productivity
-- Low correlation with other variables
-- Direct link to prey availability
-- High quality data (MODIS 250m)
-
-**Roughness (✅ KEEP):**
-- Unique information: Terrain complexity
-- Weakly correlated with elevation (captures different aspect)
-- Important for denning and hunting cover
-- Not redundant with slope
-
-**Water Distance (✅ KEEP):**
-- Unique information: Resource availability
-- Independent of other variables
-- Essential for wolf physiology
-- Clear biological importance
-
-**Population (✅ KEEP):**
-- Comprehensive human disturbance metric
-- Strongest negative predictor in literature
-- Captures multiple disturbance types
-- High quality data (GHS-POP 100m)
-
-**Road Density (✅ KEEP):**
-- Linear barriers to movement
-- Mortality risk (vehicle collisions)
-- May be partially redundant with population
-- Keep if correlation with population < 0.7
-
-**Elevation (❌ REMOVE - Example):**
-- Highly correlated with temperature (r = -0.85)
-- Information captured by temperature
-- Temperature more directly relevant
-
-**Railway Density (❌ REMOVE - Example):**
-- Highly correlated with road density (r = 0.82)
-- Much lower density than roads
-- Roads capture similar barrier effect
 
 ---
 
@@ -1587,61 +1267,13 @@ cat("Reduction:", nlyr(env_stack_scaled) - length(selected_variables),
 # CREATE FINAL STANDARDIZED STACK FOR CNN
 # =============================================================================
 
-cat("📦 Creating final environmental stack for CNN...\n")
-
 # Extract selected variables
+# selected_variables <- c("NDVI", "Roughness", "Population", "Water_Distance", "Road_Density")
+selected_vars <- c("NDVI", "Roughness", "Road_Density")
 env_stack_final <- env_stack_scaled[[selected_variables]]
-
-# Verify selection
-cat("\nFinal stack properties:\n")
-cat("  Variables:", nlyr(env_stack_final), "\n")
-cat("  Names:", paste(names(env_stack_final), collapse = ", "), "\n")
-cat("  Resolution:", res(env_stack_final)[1], "m\n")
-cat("  CRS:", crs(env_stack_final, describe = TRUE)$name, "\n\n")
 
 # Save final stack
 writeRaster(env_stack_final, "env_stack_final_cnn.tif", overwrite = TRUE)
 
-cat("✅ Final CNN stack saved: env_stack_final_cnn.tif\n")
-cat("   File size:", round(file.size("env_stack_final_cnn.tif") / 1e6, 1), "MB\n\n")
-
-# Also save variable names for reproducibility
-write.csv(
-  data.frame(
-    index = 1:length(selected_variables),
-    variable = selected_variables
-  ), 
-  "cnn_variables_final.csv", 
-  row.names = FALSE
-)
-
-cat("✅ Variable list saved: cnn_variables_final.csv\n\n")
 ```
 
-### Results
-[INSERT: Final 5-variable stack visualization panel]
-
-**Final CNN input stack:**
-- **Channels:** 5 variables
-- **Resolution:** 100m × 100m
-- **Study area:** ~[X] km²
-- **Total pixels:** ~[X] million per variable
-- **File size:** ~[X] MB
-- **All variables standardized:** Mean ≈ 0, SD ≈ 1
-
-**Advantages of reduced variable set:**
-- ✅ Less redundancy (lower multicollinearity)
-- ✅ Faster training (fewer channels)
-- ✅ Better interpretability (clear role per variable)
-- ✅ Reduced overfitting risk (simpler model)
-- ✅ Maintained ecological coverage (all habitat aspects represented)
-
----
-
-Would you like me to continue with:
-11. Wolf Occurrence Data (GBIF Download)
-12. Pseudo-Absence Sampling Strategy
-13. CNN Patch Extraction
-14. Train/Validation/Test Split
-
-Let me know and I'll complete the markdown!
