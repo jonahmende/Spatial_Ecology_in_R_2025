@@ -2227,7 +2227,7 @@ par(mfrow = c(1, 1))
 
 ### Results
 
-![patch plots](patch plots.png)
+![patch plots](patch_plots.png)
 
 ---
 
@@ -2264,8 +2264,8 @@ writeVector(abs_final, "wolf_points_absence.shp", overwrite = TRUE)
 **Files created:**
 - `cnn_data.rds`: All training/val/test data in R format (~370 MB)
 - `wolf_points_all.shp`: All points with labels and split assignments
-- `wolf_points_presence.shp`: Wolf presence points (n = [X])
-- `wolf_points_absence.shp`: Pseudo-absence points (n = [X])
+- `wolf_points_presence.shp`: Wolf presence points
+- `wolf_points_absence.shp`: Pseudo-absence points 
 
 ---
 
@@ -2282,19 +2282,18 @@ writeVector(abs_final, "wolf_points_absence.shp", overwrite = TRUE)
 
 **Wolf Occurrence Data:**
 - Source: GBIF (*Canis lupus* in Northern Italy)
-- Raw downloads: [Xxx] records
-- After filtering: [X] points
-- After spatial thinning: [X] points
+- Raw downloads: [1970] records
+- After filtering and spatial thinning: [439] points
 - Thinning distance: 7 km
-- Pseudo-absences: [X] points (1:1 ratio)
+- Pseudo-absences: [439] points (1:1 ratio)
 - Sampling strategy: 10-30 km donut buffer
 
 **CNN Patches:**
 - Patch size: 48 × 48 pixels (4.8 km × 4.8 km)
 - Area per patch: 23.0 km²
-- Training samples: [Xxx] (70%)
-- Validation samples: [X] (15%)
-- Test samples: [X] (15%)
+- Training samples: [309] (70%)
+- Validation samples: [66] (15%)
+- Test samples: [66] (15%)
 - Class balance: 50% presence, 50% absence in all splits
 
 **Files Created:**
@@ -2729,7 +2728,7 @@ Training complete!
 
 ## 3.3 Results and Evaluation
 
-[INSERT: Training history plot (loss and accuracy curves)]
+![CNN Training History](CNN_history.png)
 
 **Training curve interpretation:**
 
