@@ -16,13 +16,11 @@
     * [1.7 Distance to Water](#17-distance-to-water)
     * [1.8 Variable Standardization and CNN Data Preparation](#18-variable-standardization-and-cnn-data-preparation)
     * [1.9 Correlation Analysis and Variable Selection](#19-correlation-analysis-and-variable-selection)
-    
 2. [Wolf Occurrence Data Acquisition and Processing](#2-wolf-occurrence-data-acquisition-and-processing)
     * [2.1 Aquisition (GBIF)](#21-aquisition-gbif)
     * [2.2 Spatial Thinning to Reduce Pseudoreplication](#22-spatial-thinning-to-reduce-pseudoreplication)
     * [2.3 Pseudo-Absence Sampling Strategy](#23-pseudo-absence-sampling-strategy)
     * [2.4 Train/Validation/Test Split (Stratified)](#24-trainvalidationtest-split-stratified)
-    
 3. [CNN Preparations and Modelling](#3-cnn-preparations-and-modelling)
     * [3.1 CNN Patch Extraction](#31-cnn-patch-extraction)
     * [3.2 CNN Model Architecture and Training](#32-cnn-model-architecture-and-training)
@@ -41,7 +39,7 @@ setwd("/path/to/your/project")
 libs <- c("geodata", "elevatr", "terra", "sf", "rgbif", "caret", "keras3", 
           "corrplot", "dplyr", "abind", "ggplot2", "tidyterra", "ggspatial", 
           "pROC", "imageRy")
-lapply(libs, require, character.only = TRUE)
+lapply(libs, require, character.only = TRUE)  # takes vector or list and applies a function to each element one at a time
 
 # Create directory for map data
 dir.create("map_data", showWarnings = FALSE)
@@ -49,7 +47,7 @@ dir.create("map_data", showWarnings = FALSE)
 
 ### Define Study Regions
 ```r
-# Download administrative boundaries for Italy (GADM level 1 = regions)
+# Download administrative boundaries for Italy (GADM level 1 = regions) - Global Administrative Map
 italy <- gadm(country = "ITA", level = 1, path = "map_data")
 
 # Select 9 northern Italian regions relevant for wolf distribution
@@ -120,7 +118,7 @@ grid_points <- st_make_grid(
 
 # Filter points within buffered region
 grid_points <- grid_points[
-  st_intersects(grid_points, regions_buffered, sparse = FALSE), 
+  st_intersects(grid_points, regions_buffered, sparse = FALSE), # returns FALSE and TRUE
 ]
 
 # Create dataframe for MODISTools batch download
@@ -131,13 +129,13 @@ download_df <- data.frame(
 )
 
 # Visualize download strategy
-plot(st_geometry(regions_sf), 
+plot(st_geometry(regions_sf),        # strip away the attribute data and plot just the shapes/points
      main = "MODIS Download Grid", 
-     lwd = 1.5, col = "lightgray", border = "black")
+     lwd = 1.5, col = "lightgray", border = "black")  # line width
 plot(st_geometry(regions_buffered), 
-     add = TRUE, border = "blue", lty = 2, lwd = 3)
+     add = TRUE, border = "blue", lty = 2, lwd = 3)   # line type
 plot(st_geometry(grid_points), 
-     add = TRUE, col = "red", pch = 20, cex = 0.5)
+     add = TRUE, col = "red", pch = 20, cex = 0.5)    # point type and size
 legend("bottomleft", 
        legend = c("Study Regions", "15km Buffer", 
                   paste(nrow(grid_points), "Download Points")),
@@ -188,7 +186,7 @@ mt_batch_subset(
 # Function to process individual MODIS patches
 # Converts CSV to raster in MODIS Sinusoidal projection
 process_patch_sinusoidal <- function(file) {
-  tryCatch({
+  tryCatch({        # if anything goes wrong with a particular file, it returns NULL and moves on
     # Read CSV file
     df <- read.csv(file)
     
@@ -198,7 +196,7 @@ process_patch_sinusoidal <- function(file) {
     # Extract metadata from first row
     meta <- df[1, ]
     
-    # MODIS Sinusoidal projection definition
+    # MODIS Sinusoidal projection string - standardized format for defining coordinate reference systems
     modis_crs <- paste0(
       "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 ",
       "+a=6371007.181 +b=6371007.181 +units=m +no_defs"
@@ -247,18 +245,16 @@ process_patch_sinusoidal <- function(file) {
 # List all downloaded patch files
 patch_files <- list.files("modis_patches", full.names = TRUE, pattern = ".csv")
 
-cat("Processing", length(patch_files), "patches...\n")
-
 # Process all patches
 patch_list_sin <- lapply(patch_files, process_patch_sinusoidal)
 
 # Remove failed patches (NULL values)
 patch_list_sin <- patch_list_sin[!sapply(patch_list_sin, is.null)]
 
-cat("Successfully loaded", length(patch_list_sin), "patches\n")
-
 # Mosaic all patches together
 # fun = "mean" handles overlapping areas by averaging
+# do.call() unpacks the list and spreads its contents out as individual arguments
+# mosaic() from the terra package, this combines multiple rasters that share the same CRS and resolution into one
 ndvi_sinusoidal <- do.call(mosaic, c(patch_list_sin, fun = "mean"))
 ```
 
@@ -272,7 +268,6 @@ ndvi_sinusoidal <- do.call(mosaic, c(patch_list_sin, fun = "mean"))
 ### Project and Finalize NDVI
 ```r
 # Project from Sinusoidal to UTM Zone 32N
-cat("Projecting to UTM...\n")
 ndvi_utm <- project(
   ndvi_sinusoidal, 
   regions_utm,           # Use regions as template
@@ -965,8 +960,6 @@ if (!compareGeom(elevation, ndvi, stopOnError = FALSE)) {
 # CREATE ENVIRONMENTAL STACK
 # =============================================================================
 
-cat("📚 Creating multi-layer environmental stack...\n")
-
 # Stack all layers into single raster object
 env_stack <- c(
   elevation, 
@@ -1005,11 +998,14 @@ writeRaster(env_stack, "environmental_stack_100m.tif", overwrite = TRUE)
 im.ggplot <- function(raster, layer = 1, title = NULL, 
                       color_option = "viridis", 
                       log_scale = FALSE,
-                      reverse_colors = FALSE) {  # NEU!
-  if (nlyr(raster) > 1) {
+                      reverse_colors = FALSE) {
+
+  # choose layer
+  if (nlyr(raster) > 1) { 
     raster <- raster[[layer]]
   }
-  
+
+  # choose title
   if (is.null(title)) {
     title <- names(raster)
   }
