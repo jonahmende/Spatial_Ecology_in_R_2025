@@ -1281,8 +1281,9 @@ sample_indices <- sample(
 # Extract values for sampled cells
 sample_data <- data.frame(cell = sample_indices)
 
+# extract name and then data
 for (i in 1:nlyr(env_stack_scaled)) {
-  var_name <- names(env_stack_scaled)[i]
+  var_name <- names(env_stack_scaled)[i]  
   sample_data[[var_name]] <- env_stack_scaled[[i]][sample_indices]
 }
 
@@ -1296,7 +1297,6 @@ sample_data <- sample_data %>%
 **Sampling Strategy:**
 - **Size:** 50,000 pixels (~0.3% of study area)
 - **Method:** Simple random sampling
-- **Justification:** Correlation estimates stable with >10,000 samples
 - **NA handling:** Complete cases only (remove any row with NA)
 
 ---
@@ -1308,6 +1308,7 @@ sample_data <- sample_data %>%
 # =============================================================================
 
 # Calculate pairwise Pearson correlations
+# only in rows where all variables have data
 cor_matrix <- cor(sample_data, use = "complete.obs")
 
 # Display correlation matrix (rounded for readability)
@@ -1343,7 +1344,7 @@ corrplot(
   number.cex = 0.8,           # Coefficient text size
   col = colorRampPalette(c("#6D9EC1", "white", "#E46726"))(200),  # Blue-White-Orange
   title = "Correlation Matrix - Environmental Variables",
-  mar = c(0, 0, 2, 0)         # Plot margins
+  mar = c(0, 0, 2, 0)         # Plot margins of the plot
 )
 
 dev.off()
@@ -1381,7 +1382,7 @@ Wolf presence data is obtained from the Global Biodiversity Information Facility
 **GBIF Database:**
 - **Sources:** Museums, field observations, citizen science (iNaturalist), research projects
 - **Quality:** Variable (includes both verified specimens and casual observations)
-- **Temporal range:** Historical to present (we use all available dates) xxx
+- **Temporal range:** Historical to present (we use all available dates) 
 
 **Data Quality Considerations:**
 - Only georeferenced records (`hasCoordinate = TRUE`)
@@ -1472,6 +1473,7 @@ wolf_obs <- occ_data(
 
 # GBIF returns a list (one element per region query)
 # Combine all into single dataframe
+# extract list of data frames and bind them into one single one
 pres_pts <- bind_rows(lapply(wolf_obs, function(x) x$data))
 
 ```
@@ -1553,8 +1555,8 @@ pres_vect_clean <- pres_vect[keep_indices, ]
 
 # Create spatial grid for thinning
 # Grid cell size = 7km (environmental autocorrelation range)
-thinning_grid <- rast(env_stack_final)
-res(thinning_grid) <- 7000  # 7000 meters = 7 km
+thinning_grid <- rast(env_stack_final) # new empty raster (same extent and CRS)
+res(thinning_grid) <- 7000  # changes resolution to 7 km
 
 # Sample one point per grid cell (random selection if multiple points)
 set.seed(123)  # Reproducible sampling
@@ -1621,17 +1623,19 @@ We use a **"donut" sampling strategy:**
 # =============================================================================
 
 # Extract all cells with valid environmental data
-cells_with_data <- as.data.frame(
+cells_with_data <- as.data.frame(  # each row is one pixel
   env_stack_final[[1]],  # Use first layer as template
   xy = TRUE,              # Include coordinates
   na.rm = TRUE,           # Exclude NA cells
   cells = TRUE            # Include cell indices
 )
 
-# Apply edge buffer to avoid extracting patches that extend outside study area
+# Apply edge buffer
 # This prevents edge effects where patches would include NA values
+# each row has row and column index of the raster cells with data
 rc <- rowColFromCell(env_stack_final, cells_with_data$cell)
 
+# indices that are far enough away from the box edge
 valid_indices <- which(
   rc[, 1] > EDGE_BUFFER & 
   rc[, 1] < (nrow(env_stack_final) - EDGE_BUFFER) & 
@@ -1652,8 +1656,8 @@ cells_safe <- cells_with_data[valid_indices, ]
 
 **Example (48×48 patches):**
 - EDGE_BUFFER = 24 pixels = 2.4 km
-- Prevents sampling within 2.4 km of study area boundary
-- Ensures all patches have complete environmental data
+- Prevents sampling within 2.4 km of study area box boundary
+- could still have patches close to the study area polygon
 
 ---
 
@@ -1738,7 +1742,7 @@ abs_sample_indices <- sample(
   replace = FALSE             # No replacement (each cell used once)
 )
 
-# Extract coordinates of sampled cells
+# Extract only coordinates of sampled cells
 abs_coords <- cells_safe_filtered[abs_sample_indices, c("x", "y")]
 
 # Create SpatVector of pseudo-absences
@@ -2105,15 +2109,10 @@ extract_split_tiles <- function(pts_vector, split_label, stack,
   # Replace any remaining NAs with 0
   # NAs can occur at patch edges or in water bodies
   tiles[is.na(tiles)] <- 0
-    
-  # Count NA replacements
-  n_zeros <- sum(tiles == 0)
-  total_values <- length(tiles)
-  pct_zeros <- round(n_zeros / total_values * 100, 2)
   
   # Return patches (x) and labels (y)
   return(list(
-    x = tiles,           # 4D array of patches
+    x = tiles,              # 4D array of patches
     y = as.numeric(labels)  # 1D vector of labels
   ))
 }
@@ -2185,37 +2184,103 @@ y_test <- test_data$y
 ### Visual Inspection of Sample Patches
 ```r
 # =============================================================================
-# VISUALIZE SAMPLE PATCHES
+# VISUALIZE EXAMPLE PATCHES
 # =============================================================================
 
-# We use facet_wrap with scales = "free" 
-# Note: In standard ggplot, 'fill' is global, but we can 
-# 'cheat' by normalizing the values between 0 and 1 within each patch first.
+# Function to convert a 3D patch array to a tidy dataframe for ggplot
+# Takes a 48x48x3 patch and reshapes it into long format with metadata
+extract_patch_df <- function(patch_3d, label_text, var_names) {
+  # Loop through each environmental layer (1 to 3)
+  do.call(rbind, lapply(1:3, function(i) {
+    # Extract one 48x48 layer (e.g., NDVI, elevation, or road distance)
+    mat <- patch_3d[,,i]
+    
+    # Convert matrix to long format: each row is one pixel
+    # as.table() → as.data.frame() creates columns: Var1, Var2, Freq
+    df <- as.data.frame(as.table(mat))
+    
+    # Rename columns to meaningful names
+    colnames(df) <- c("row", "col", "value")
+    
+    # Add metadata: which environmental variable and patch type
+    df$variable <- var_names[i]      # e.g., "NDVI", "Elevation"
+    df$type <- label_text             # e.g., "Wolf Presence"
+    
+    return(df)
+  }))
+}
+
+# define environmental layers
+var_names <- c("NDVI", "Road_Density", "Roughness")
+
+# Extract one example presence patch and one absence patch for visualization
+# which(y_train == 1)[1] finds the first presence point in training data
+pres_df <- extract_patch_df(x_train[which(y_train == 1)[1],,,], "Wolf Presence", var_names)
+
+# which(y_train == 0)[1] finds the first absence point in training data
+abs_df  <- extract_patch_df(x_train[which(y_train == 0)[1],,,], "Wolf Absence", var_names)
+
+# Combine into one dataframe: 2 patches × 3 layers × 2,304 pixels = 13,824 rows
+plot_data <- rbind(pres_df, abs_df)
+
+# -----------------------------------------------------------------------------
+# Normalize values within each variable for comparable color scales
+# -----------------------------------------------------------------------------
 
 plot_data_normalized <- plot_data %>%
+  # Group by patch type and variable (e.g., "Presence + NDVI")
   group_by(type, variable) %>%
+  
+  # Min-max normalization: rescale each group to 0-1 range
+  # Formula: (value - min) / (max - min)
+  # Ensures each facet uses full color range regardless of original scale
   mutate(value_norm = (value - min(value)) / (max(value) - min(value))) %>%
+  
   ungroup()
 
+# -----------------------------------------------------------------------------
+# Create faceted visualization
+# -----------------------------------------------------------------------------
+
 patch_plot <- ggplot(plot_data_normalized, aes(x = col, y = row, fill = value_norm)) +
+  # Draw map: each pixel becomes a colored square
   geom_raster() +
+  
+  # Create separate panels for each combination of type × variable
+  # Result: 6 panels (2 types × 3 variables) arranged in 3 columns
   facet_wrap(type ~ variable, ncol = 3) + 
-  coord_fixed() + # Makes them perfectly square
-  scale_fill_viridis_c(option = "varidis") +
+  
+  # Force equal x/y scaling so pixels appear square, not stretched
+  # Critical for spatial data visualization
+  coord_fixed() +
+  
+  # Use perceptually uniform, colorblind-friendly color palette
+  scale_fill_viridis_c(option = "viridis") +  
+  
+  # Clean minimal theme
   theme_minimal() +
-  labs(title = "Standardized CNN Input Patches",
-       subtitle = "Locally normalized colors (0=Min, 1=Max) | Square geometry",
-       fill = "Relative Value") +
+  
+  # Labels
+  labs(
+    title = "Standardized CNN Input Patches",
+    subtitle = "Locally normalized colors (0=Min, 1=Max) | Square geometry",
+    fill = "Relative Value"
+  ) +
+  
+  # Customize theme
   theme(
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "bold", size = 10),
-    legend.position = "bottom"
+    axis.text = element_blank(),        # Remove axis numbers (pixel coords not meaningful)
+    axis.title = element_blank(),       # Remove axis labels
+    panel.grid = element_blank(),       # Remove grid lines
+    strip.text = element_text(face = "bold", size = 10),  # Bold facet labels
+    legend.position = "bottom"          # Move legend to bottom
   )
 
+# Display plot
 patch_plot
-ggsave("Square_CNN_Patches_Fixed.png", patch_plot, width = 8, height = 6)
+
+# Save high-resolution version
+ggsave("Square_CNN_Patches_Fixed.png", patch_plot, width = 8, height = 6, dpi = 300)
 
 ```
 
