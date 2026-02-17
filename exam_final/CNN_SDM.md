@@ -157,12 +157,7 @@ legend("bottomleft",
 - **Grid spacing:** 0.25° (~27.5 km)
 
 ### Results
-[INSERT: Map showing download grid and coverage]
-
-**Download statistics:**
-- Total download points: [X]
-- Buffer size: 15 km
-- Expected coverage: Complete study area + buffer
+![MODIS Sampling Strategy](Download_Strategy_Map.png)
 
 ---
 
@@ -297,8 +292,6 @@ writeRaster(ndvi_final, "ndvi_norditalien_final.tif", overwrite = TRUE)
 - Higher NDVI values indicate denser vegetation (potential wolf habitat)
 - Low NDVI areas correspond to urban zones and agricultural lands
 - Apennine mountain forests show highest NDVI values
-
----
 
 ---
 
@@ -499,10 +492,6 @@ temp_utm <- project(
   "EPSG:32632", 
   method = "bilinear"  # Smooth interpolation for temperature
 )
-
-# Convert from integer (°C × 10) to actual °C
-# WorldClim stores temperature as integers to save space
-temp_utm <- temp_utm / 10
 
 # Resample to 100m grid (matches all other variables)
 temp_100m <- resample(
@@ -1006,6 +995,82 @@ names(env_stack) <- c(
 writeRaster(env_stack, "environmental_stack_100m.tif", overwrite = TRUE)
 
 ```
+---
+### Visualisation
+
+```r
+# Custom ggplot function for single raster 
+im.ggplot <- function(raster, layer = 1, title = NULL, 
+                      color_option = "viridis", 
+                      log_scale = FALSE,
+                      reverse_colors = FALSE) {  # NEU!
+  if (nlyr(raster) > 1) {
+    raster <- raster[[layer]]
+  }
+  
+  if (is.null(title)) {
+    title <- names(raster)
+  }
+  
+  # Log-Transformation (optional)
+  if (log_scale) {
+    raster <- log10(raster + 1)
+    title <- paste0(title, " (log10)")
+  }
+  
+  # Direction based on parameter
+  color_direction <- ifelse(reverse_colors, -1, 1)
+  
+  ggplot() +
+    geom_spatraster(data = raster) +
+    scale_fill_viridis_c(option = color_option, 
+                         na.value = "gray90", 
+                         direction = color_direction) +  # Flexibel!
+    labs(title = title, fill = "", x = "Longitude ", y = "Latitude ") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      axis.text = element_text(size = 8),
+      axis.title = element_text(size = 10)
+    )
+}
+
+
+# Create individual plots
+# , color_option = "mako"
+# , color_option = "inferno"
+# , reverse_colors = TRUE
+p1 <- im.ggplot(elevation, title = "Elevation (m)")
+p2 <- im.ggplot(slope, title = "Slope (°)")
+p3 <- im.ggplot(roughness, title = "Roughness (m)", log_scale = TRUE)
+p4 <- im.ggplot(temperature, title = "Temperature (°C)")
+p5 <- im.ggplot(ndvi, title = "NDVI")
+p6 <- im.ggplot(population, title = "Population", log_scale = TRUE)
+p7 <- im.ggplot(road_density, title = "Road Density")
+p8 <- im.ggplot(railway_density, title = "Railway Density")
+p9 <- im.ggplot(water_distance, title = "Water Distance", log_scale = TRUE)
+#p10 <- im.ggplot(landuse, title = "Landuse (0-5)")
+
+
+# 5. PATCHWORK LAYOUT
+# All variables (3x4)
+all_layout <- (p1 | p2 | p3) / (p4 | p5 | p6) / (p7 | p8 | p9) 
+all_layout <- all_layout + 
+  plot_annotation(
+    title = "ALL ENVIRONMENTAL VARIABLES (100m resolution)",
+    theme = theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5))
+  )
+
+print(all_layout)
+
+# save in desired folder
+setwd("/Users/jonahmende/Library/Mobile Documents/com~apple~CloudDocs/Unibo/3. semestre/spatial ecology in r/final/plots")
+ggsave("plot_all_variables.png", all_layout, width = 15, height = 12, dpi = 300)
+setwd("/Users/jonahmende/Library/Mobile Documents/com~apple~CloudDocs/Unibo/3. semestre/spatial ecology in r/final")
+
+```
+
+![Environmental Variables](plot_all_variables.png)
 
 ---
 
@@ -1077,19 +1142,19 @@ writeRaster(env_stack_scaled, "env_stack_scaled_100m.tif", overwrite = TRUE)
 
 ```
 
-**Standardization Results:**
+**Standardization Results**
 
-| Variable | Original Min | Original Max | Mean | SD | Scaled Mean | Scaled SD |
-|----------|-------------|--------------|------|-----|-------------|-----------|
-| Elevation | [X] m | [X] m | [X] | [X] | ~0.000 | ~1.000 |
-| Slope | [X]° | [X]° | [X] | [X] | ~0.000 | ~1.000 |
-| Roughness | [X] m | [X] m | [X] | [X] | ~0.000 | ~1.000 |
-| Temperature | [X]°C | [X]°C | [X] | [X] | ~0.000 | ~1.000 |
-| NDVI | [X] | [X] | [X] | [X] | ~0.000 | ~1.000 |
-| Population | [X] | [X] | [X] | [X] | ~0.000 | ~1.000 |
-| Road Density | [X] | [X] | [X] | [X] | ~0.000 | ~1.000 |
-| Railway Density | [X] | [X] | [X] | [X] | ~0.000 | ~1.000 |
-| Water Distance | [X] m | [X] m | [X] | [X] | ~0.000 | ~1.000 |
+| Variable | Original Min | Original Max | Mean ($\mu$) | SD ($\sigma$) | Scaled Mean | Scaled SD |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Elevation** | ~0 m | ~4,800 m | ~660.2 | ~614.5 | 0.000 | 1.000 |
+| **Slope** | 0° | ~65.2° | ~8.4 | ~9.2 | 0.000 | 1.000 |
+| **Roughness** | 0 m | ~251.4 m | ~12.5 | ~14.2 | 0.000 | 1.000 |
+| **Temperature** | ~ -5.0°C | ~20.5°C | ~15.2 | ~3.1 | 0.000 | 1.000 |
+| **NDVI** | ~ -0.12 | ~0.98 | ~0.71 | ~0.15 | 0.000 | 1.000 |
+| **Population** | 0 | ~150,200 | ~281.4 | ~1,560.8 | 0.000 | 1.000 |
+| **Road Density** | 0 | ~15.5 | ~6.2 | ~3.9 | 0.000 | 1.000 |
+| **Railway Density** | 0 | ~11.9 | ~0.09 | ~0.51 | 0.000 | 1.000 |
+| **Water Distance** | 0 m | ~44,800 m | ~1,241.5 | ~1,512.3 | 0.000 | 1.000 |
 
 ---
 
@@ -1152,8 +1217,8 @@ ridge_plot <- im.ridgeline(
     y = ""
   ) +
   scale_x_continuous(
-    breaks = seq(-4, 4, 1),
-    limits = c(-3, 3)    # Focus on main distribution
+    breaks = seq(-4, 4, 1), # labels on the window frame
+    limits = c(-3, 3)       # Focus on main distribution
   ) +
   theme_minimal() +
   theme(
@@ -1174,7 +1239,7 @@ ggsave("plots/ridgeline_standardized.png", ridge_plot,
 ```
 
 ### Results
-[INSERT: Ridgeline plot showing standardized distributions]
+![Ridgeline plot](ridgeline_standardized_viridis.png)
 
 
 **Implications for CNN:**
@@ -1288,7 +1353,7 @@ dev.off()
 ```
 
 ### Results
-[INSERT: Correlation matrix heatmap]
+![Correlation plot](correlation_plot.png)
 
 ---
 
@@ -1415,12 +1480,11 @@ pres_pts <- bind_rows(lapply(wolf_obs, function(x) x$data))
 
 **GBIF Download Summary:**
 - Total records downloaded: [1970]
-- Date range: [earliest year] to [latest year]
+- Date range: [1800] to [2026]
 - Primary sources:
-  - Museum specimens: [X]%
-  - Field observations: [X]%
-  - Citizen science (iNaturalist): [X]%
-- Coordinate precision: Variable (from <10m to <10km)
+  - Museum specimens: [0.1]%
+  - Field observations: [50.7]%
+  - Citizen science (iNaturalist): [49.2]%
 
 **Initial Data Quality Issues:**
 - Records may include:
@@ -1811,7 +1875,8 @@ ggsave(
 ```
 
 ### Results
-[INSERT: Map showing study area with colored buffer zones, red triangles for presences, blue dots for pseudo-absences]
+
+![Wolf sampling](wolf_sampling_map.png)
 
 ---
 
