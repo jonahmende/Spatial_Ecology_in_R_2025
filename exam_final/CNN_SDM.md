@@ -1,19 +1,34 @@
 # Wolf Habitat Suitability Modeling in Northern Italy
-## Environmental Data Acquisition and Processing
+![Wolf](Gray_wolf.jpg)
 
-![Wolf](wolf.jpg.webp)
 
-### Table of Contents
-1. [Study Area Definition](#study-area-definition)
-2. [NDVI Acquisition (MODIS)](#ndvi-acquisition)
-3. [Elevation Data (SRTM)](#elevation-data)
-4. [Human Footprint Variables](#human-footprint-variables)
-5. [Terrain Derivatives](#terrain-derivatives)
-6. [Climate Data](#climate-data)
+# Table of Contents
+1. [Environmental Data Acquisition and Processing](#1-environmental-data-acquisition-and-processing)
+    * [1.1 Study Area Definition](#11-study-area-definition)
+    * [1.2 NDVI Acquisition (MODIS)](#12-ndvi-acquisition-modis)
+    * [1.3 Elevation Data (SRTM)](#13-elevation-data-srtm)
+    * [1.4 Terrain Derivatives](#14-terrain-derivatives)
+    * [1.5 Climate Data (WorldClim)](#15-climate-data-worldclim)
+    * [1.6 Human Footprint Variables](#16-human-footprint-variables)
+        * [1.6.1 Road Density](#161-road-density)
+        * [1.6.2 Railway Density](#162-railway-density)
+        * [1.6.3 Population Density (GHS-POP)](#163-population-density-ghs-pop)
+    * [1.7 Distance to Water](#17-distance-to-water)
+    * [1.8 Variable Standardization and CNN Data Preparation](#18-variable-standardization-and-cnn-data-preparation)
+    * [1.9 Correlation Analysis and Variable Selection](#19-correlation-analysis-and-variable-selection)
+2. [Wolf Occurrence Data Acquisition and Processing](#2-wolf-occurrence-data-acquisition-and-processing)
+    * [2.1 Aquisition (GBIF)](#21-aquisition-gbif)
+    * [2.2 Spatial Thinning to Reduce Pseudoreplication](#22-spatial-thinning-to-reduce-pseudoreplication)
+    * [2.3 Pseudo-Absence Sampling Strategy](#23-pseudo-absence-sampling-strategy)
+    * [2.4 Train/Validation/Test Split (Stratified)](#24-trainvalidationtest-split-stratified)
+3. [CNN Preparations and Modelling](#3-cnn-preparations-and-modelling)
+    * [3.1 CNN Patch Extraction](#31-cnn-patch-extraction)
+    * [3.2 CNN Model Architecture and Training](#32-cnn-model-architecture-and-training)
+    * [3.3 Results and Evaluation](#33-results-and-evaluation)
 
 ---
-
-## 1. Study Area Definition
+# 1. Environmental Data Acquisition and Processing
+## 1.1 Study Area Definition
 
 ### Setup and Libraries
 ```r
@@ -70,28 +85,22 @@ plot(regions_union, add = TRUE, border = "red", lwd = 2)
 dev.off()
 
 ```
-![Study Area](Study_Area_Italy.png)
 
 **Ecological Reasoning:**
 - These 9 regions cover the core wolf range in the Northern Apennines
 - UTM projection allows accurate distance and area calculations in meters and square grid cells
 
-**Technical Details:**
-- **Spatial extent:** ~120,000 km²
-- **CRS:** EPSG:32632 (UTM Zone 32N)
-- **Administrative level:** Regional (NUTS-2)
-
 ### Results
-[INSERT: Map showing the 9 study regions]
+![Study Area](Study_Area_Italy.png)
 
 **Key characteristics:**
-- Total area: [Xxx] km²
 - Includes both Alpine and Apennine mountain ranges
 - High habitat diversity: forests, grasslands, agricultural areas
+- - **CRS:** EPSG:32632 (UTM Zone 32N)
 
 ---
 
-## 2. NDVI Acquisition (MODIS)
+## 1.2 NDVI Acquisition (MODIS)
 
 ### Create Download Grid with Buffer
 ```r
@@ -293,7 +302,7 @@ writeRaster(ndvi_final, "ndvi_norditalien_final.tif", overwrite = TRUE)
 
 ---
 
-## 3. Elevation Data (SRTM)
+## 1.3 Elevation Data (SRTM)
 
 ### Download High-Resolution Elevation
 ```r
@@ -366,7 +375,7 @@ writeRaster(elevation_final, "elevation_100m.tif", overwrite = TRUE)
 
 ---
 
-## 4. Terrain Derivatives
+## 1.4 Terrain Derivatives
 
 ### Slope Calculation
 ```r
@@ -437,7 +446,7 @@ writeRaster(roughness_final, "roughness_100m.tif", overwrite = TRUE)
 
 ---
 
-## 5. Climate Data (WorldClim)
+## 1.5 Climate Data (WorldClim)
 
 ### Download Temperature Data
 ```r
@@ -525,7 +534,7 @@ writeRaster(temp_final, "temperature_bio_100m.tif", overwrite = TRUE)
 ---
 
 
-## 6. Human Footprint Variables
+## 1.6 Human Footprint Variables
 
 ### Overview
 Human infrastructure strongly influences wolf distribution through:
@@ -548,7 +557,7 @@ We quantify human footprint using OpenStreetMap (OSM) data:
 
 ---
 
-### 6.1 Road Density
+### 1.6.1 Road Density
 ```r
 # Base path to OSM shapefiles (adjust to your directory)
 base_path <- "/path/to/your/osm/data"
@@ -629,7 +638,7 @@ writeRaster(road_density_final, "road_density_100m.tif", overwrite = TRUE)
 
 ---
 
-### 6.2 Railway Density
+### 1.6.2 Railway Density
 ```r
 # Load railway shapefiles from three regions
 
@@ -699,7 +708,7 @@ writeRaster(railway_density_final, "railway_density_100m.tif", overwrite = TRUE)
 
 ---
 
-### 6.4 Population Density (GHS-POP)
+### 1.6.3 Population Density (GHS-POP)
 ```r
 # Population data from Global Human Settlement Layer (GHS-POP)
 # Source: European Commission Joint Research Centre
@@ -776,7 +785,7 @@ writeRaster(ghs_final, "population_ghs_100m.tif", overwrite = TRUE)
 ---
 
 
-## 8. Distance to Water
+## 1.7 Distance to Water
 
 ### Load Water Features
 ```r
@@ -889,7 +898,7 @@ writeRaster(water_distance_final, "water_distance_100m.tif", overwrite = TRUE)
 
 
 
-## 9. Variable Standardization and CNN Data Preparation
+## 1.8 Variable Standardization and CNN Data Preparation
 
 ### Overview
 Before training the Convolutional Neural Network (CNN), all environmental variables must be standardized to ensure:
@@ -1175,7 +1184,7 @@ ggsave("plots/ridgeline_standardized.png", ridge_plot,
 
 ---
 
-## 10. Correlation Analysis and Variable Selection
+## 1.9 Correlation Analysis and Variable Selection
 
 ### Purpose
 Identify and remove highly correlated variables to:
@@ -1296,11 +1305,12 @@ env_stack_final <- env_stack_scaled[[selected_variables]]
 
 # Save final stack
 writeRaster(env_stack_final, "env_stack_final_cnn.tif", overwrite = TRUE)
-
+```
 
 ---
 
-## 11. Wolf Occurrence Data Acquisition
+# 2. Wolf Occurrence Data Acquisition and Processing
+## 2.1 Aquisition (GBIF)
 
 ### Overview
 Wolf presence data is obtained from the Global Biodiversity Information Facility (GBIF), a free and open-access database of species occurrences worldwide. We download georeferenced observations of *Canis lupus* from the 9 study regions in Northern Italy.
@@ -1473,7 +1483,7 @@ pres_vect_clean <- pres_vect[keep_indices, ]
 
 ---
 
-### Spatial Thinning to Reduce Pseudoreplication
+## 2.2 Spatial Thinning to Reduce Pseudoreplication
 ```r
 # =============================================================================
 # SPATIAL THINNING (7 KM GRID)
@@ -1521,7 +1531,7 @@ pres_final <- spatSample(
 
 ---
 
-## 12. Pseudo-Absence Sampling Strategy
+## 2.3 Pseudo-Absence Sampling Strategy
 
 ### Overview
 Presence-only data (like GBIF occurrences) cannot distinguish between:
@@ -1805,7 +1815,7 @@ ggsave(
 
 ---
 
-## 13. Train/Validation/Test Split (Stratified)
+## 2.4 Train/Validation/Test Split (Stratified)
 
 ### Overview
 Before extracting CNN patches, we must split the data into three independent sets:
@@ -1936,8 +1946,8 @@ all_pts$split[c(pres_split$test, abs_split$test)] <- "test"
 | Test | [66] | [66] | [132] | 50.0%  |
 
 ---
-
-## 14. CNN Patch Extraction
+# 3. CNN Preparations and Modelling
+## 3.1 CNN Patch Extraction
 
 ### Overview
 For each wolf observation point (presence or absence), we extract a square patch of environmental data centered on that point. These patches become the input images for the CNN.
@@ -2231,7 +2241,7 @@ writeVector(abs_final, "wolf_points_absence.shp", overwrite = TRUE)
 
 ---
 
-## 16. CNN Model Architecture and Training
+## 3.2 CNN Model Architecture and Training
 
 ### Overview
 A **Convolutional Neural Network (CNN)** is used to classify wolf habitat suitability
@@ -2651,7 +2661,7 @@ Training complete!
 
 ---
 
-### Results and Evaluation
+## 3.3 Results and Evaluation
 
 [INSERT: Training history plot (loss and accuracy curves)]
 
