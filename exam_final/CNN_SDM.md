@@ -1,6 +1,8 @@
 # Wolf Habitat Suitability Modeling in Northern Italy
 ## Environmental Data Acquisition and Processing
 
+![Wolf](wolf.jpg.webp)
+
 ### Table of Contents
 1. [Study Area Definition](#study-area-definition)
 2. [NDVI Acquisition (MODIS)](#ndvi-acquisition)
@@ -68,6 +70,7 @@ plot(regions_union, add = TRUE, border = "red", lwd = 2)
 dev.off()
 
 ```
+![Study Area](Study_Area_Italy.png)
 
 **Ecological Reasoning:**
 - These 9 regions cover the core wolf range in the Northern Apennines
