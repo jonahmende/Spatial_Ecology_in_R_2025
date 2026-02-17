@@ -16,11 +16,13 @@
     * [1.7 Distance to Water](#17-distance-to-water)
     * [1.8 Variable Standardization and CNN Data Preparation](#18-variable-standardization-and-cnn-data-preparation)
     * [1.9 Correlation Analysis and Variable Selection](#19-correlation-analysis-and-variable-selection)
+    
 2. [Wolf Occurrence Data Acquisition and Processing](#2-wolf-occurrence-data-acquisition-and-processing)
     * [2.1 Aquisition (GBIF)](#21-aquisition-gbif)
     * [2.2 Spatial Thinning to Reduce Pseudoreplication](#22-spatial-thinning-to-reduce-pseudoreplication)
     * [2.3 Pseudo-Absence Sampling Strategy](#23-pseudo-absence-sampling-strategy)
     * [2.4 Train/Validation/Test Split (Stratified)](#24-trainvalidationtest-split-stratified)
+    
 3. [CNN Preparations and Modelling](#3-cnn-preparations-and-modelling)
     * [3.1 CNN Patch Extraction](#31-cnn-patch-extraction)
     * [3.2 CNN Model Architecture and Training](#32-cnn-model-architecture-and-training)
