@@ -2190,44 +2190,40 @@ y_test <- test_data$y
 # VISUALIZE SAMPLE PATCHES
 # =============================================================================
 
-# Function to plot a single patch
-plot_patch <- function(patch_3d, var_idx, var_name, label) {
-  # Extract one variable from 3D patch
-  patch_2d <- patch_3d[, , var_idx]
-  
-  # Create raster for plotting
-  r <- rast(patch_2d)
-  
-  # Plot
-  plot(r, 
-       main = paste0(var_name, " (", 
-                    ifelse(label == 1, "Presence", "Absence"), ")"),
-       col = viridis::viridis(100),
-       legend = TRUE)
-}
+# We use facet_wrap with scales = "free" 
+# Note: In standard ggplot, 'fill' is global, but we can 
+# 'cheat' by normalizing the values between 0 and 1 within each patch first.
 
-# Plot first 3 training patches (1 presence, 1 absence)
-par(mfrow = c(2, nlyr(env_stack_final)))
+plot_data_normalized <- plot_data %>%
+  group_by(type, variable) %>%
+  mutate(value_norm = (value - min(value)) / (max(value) - min(value))) %>%
+  ungroup()
 
-# Presence example
-pres_idx <- which(y_train == 1)[1]  # First presence
-for (i in 1:nlyr(env_stack_final)) {
-  plot_patch(x_train[pres_idx, , , ], i, var_names[i], 1)
-}
+patch_plot <- ggplot(plot_data_normalized, aes(x = col, y = row, fill = value_norm)) +
+  geom_raster() +
+  facet_wrap(type ~ variable, ncol = 3) + 
+  coord_fixed() + # Makes them perfectly square
+  scale_fill_viridis_c(option = "varidis") +
+  theme_minimal() +
+  labs(title = "Standardized CNN Input Patches",
+       subtitle = "Locally normalized colors (0=Min, 1=Max) | Square geometry",
+       fill = "Relative Value") +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold", size = 10),
+    legend.position = "bottom"
+  )
 
-# Absence example
-abs_idx <- which(y_train == 0)[1]  # First absence
-for (i in 1:nlyr(env_stack_final)) {
-  plot_patch(x_train[abs_idx, , , ], i, var_names[i], 0)
-}
-
-par(mfrow = c(1, 1))
+patch_plot
+ggsave("Square_CNN_Patches_Fixed.png", patch_plot, width = 8, height = 6)
 
 ```
 
 ### Results
 
-![patch plots](patch_plots.png)
+![patch plots](Square_CNN_Patches_Fixed.png)
 
 ---
 
