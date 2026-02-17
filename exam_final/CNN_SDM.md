@@ -45,6 +45,28 @@ regions_utm <- project(regions, "EPSG:32632")
 
 # Convert to sf object for spatial operations
 regions_sf <- st_as_sf(regions)
+
+# Union all regions into single polygon
+regions_union <- st_union(regions_sf)
+
+# Open a file to save the plot
+png("Study_Area_Italy.png", width = 2400, height = 1800, res = 300)
+
+# Run your plot code exactly as before
+plot(regions, 
+     axes = TRUE, 
+     main = "Study Area: Northern & Central Italy",
+     xlab = "Longitude", 
+     ylab = "Latitude",
+     col = "antiquewhite",
+     border = "darkgrey")
+
+# Add the union outline on top (optional)
+plot(regions_union, add = TRUE, border = "red", lwd = 2)
+
+# Close the file
+dev.off()
+
 ```
 
 **Ecological Reasoning:**
@@ -70,9 +92,6 @@ regions_sf <- st_as_sf(regions)
 
 ### Create Download Grid with Buffer
 ```r
-# Union all regions into single polygon
-regions_union <- st_union(regions_sf)
-
 # Create 15km buffer around study area to avoid edge effects
 # (15km = ~0.6° at this latitude, sufficient for MODIS processing)
 regions_buffered <- st_buffer(regions_union, dist = 15000)
