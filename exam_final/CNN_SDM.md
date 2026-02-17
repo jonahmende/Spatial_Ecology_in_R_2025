@@ -2426,6 +2426,7 @@ output <- input %>%
 - At each position, it computes a **weighted sum** of the 9 pixels × 3 channels
 - 16 different kernels → 16 different **feature maps**
 - Each kernel learns to detect a different low-level pattern
+- each kernel updates independently based on what's useful (gradient descent)
 
 **Parameter count (Conv Block 1):**
 ```
@@ -2550,7 +2551,7 @@ output <- input %>%
 | Method | Output size | Parameters | Overfitting risk |
 |--------|-------------|------------|-----------------|
 | Flatten | 6×6×128 = 4,608 | Very high | High |
-| **Global Avg Pool** | **128** | **None** | **Low** ✅ |
+| **Global Avg Pool** | **128** | **None** | **Low** |
 
 **What it does:**
 - For each of the 128 feature maps (6×6 each), compute the **mean value**
@@ -2681,6 +2682,12 @@ Model: "functional_14"
 ---
 
 ### Model Compilation
+
+It doesn't train the model yet — it just prepares it by:
+- Attaching the optimizer to all trainable weights
+- Defining the loss function to minimize
+- Setting up metric tracking
+
 ```r
 model %>% compile(
   optimizer = optimizer_adam(learning_rate = 0.001),
@@ -2693,6 +2700,7 @@ model %>% compile(
 - Combines **momentum** (uses past gradients) and **RMSprop** (adapts LR per parameter)
 - Learning rate = 0.001: standard starting point, updated dynamically during training
 - Adapts individual learning rates for each parameter
+- After each batch, Adam calculates gradients (how much each weight contributed to error) and updates weights to reduce loss.
 
 **Binary Crossentropy Loss:**
 ```
@@ -2723,7 +2731,7 @@ early_stop <- callback_early_stopping(
   monitor              = "val_loss",
   patience             = 20,
   restore_best_weights = TRUE,
-  verbose              = 1
+  verbose              = 1      # Print messages when the callback triggers
 )
 
 # Reduce learning rate when training plateaus
@@ -2895,7 +2903,7 @@ because:
 | Baseline | 5 | Binary CE | 70.89% | ~3% | Underfitting |
 | Bigger model | 5 | Binary CE | 70.89% | ~25% | Overfitting |
 | Focal Loss | 3 | Focal | 73.51% | ~27% | Overfitting |
-| **Final model** | **3** | **Binary CE** | **71.25%** | **~32%** | **Overfitting but best generalizing** ✅ |
+| **Final model** | **3** | **Binary CE** | **71.25%** | **~32%** | **Overfitting but best generalizing** |
 
 
 **Limitations and future improvements:**
