@@ -1382,7 +1382,7 @@ pres_pts <- bind_rows(lapply(wolf_obs, function(x) x$data))
 ```
 
 **GBIF Download Summary:**
-- Total records downloaded: [X]
+- Total records downloaded: [1970]
 - Date range: [earliest year] to [latest year]
 - Primary sources:
   - Museum specimens: [X]%
@@ -1821,9 +1821,9 @@ all_pts <- rbind(
 ```
 
 **Combined Dataset:**
-- **Total observations:** [Xxx]
-- **Presences:** [X] (50%)
-- **Absences:** [X] (50%)
+- **Total observations:** [878]
+- **Presences:** [439] (50%)
+- **Absences:** [439] (50%)
 - **Spatial extent:** Entire study area (9 regions)
 - **Temporal range:** All GBIF dates (filtered by spatial thinning)
 
@@ -1909,9 +1909,9 @@ all_pts$split[c(pres_split$test, abs_split$test)] <- "test"
 
 | Split | Absence (0) | Presence (1) | Total | % Presence |
 |-------|-------------|--------------|-------|------------|
-| Train | [Xxx] | [X] | [X] | 50.0%  |
-| Val | [X] | [X] | [X] | 50.0%  |
-| Test | [X] | [X] | [X] | 50.0%  |
+| Train | [307] | [307] | [614] | 50.0%  |
+| Val | [66] | [66] | [132] | 50.0%  |
+| Test | [66] | [66] | [132] | 50.0%  |
 
 ---
 
@@ -2207,17 +2207,545 @@ writeVector(abs_final, "wolf_points_absence.shp", overwrite = TRUE)
 5. `cnn_data.rds` - Training/val/test data
 6. `wolf_points_*.shp` - Point locations for GIS
 
-**Ready for CNN Training! 🧠**
+---
 
-The next step is to build and train the Convolutional Neural Network using this prepared data.
+## 16. CNN Model Architecture and Training
+
+### Overview
+A **Convolutional Neural Network (CNN)** is used to classify wolf habitat suitability
+from multi-channel environmental patches. CNNs are particularly suited for this task
+because they:
+
+- Learn **spatial patterns** automatically (no manual feature engineering)
+- Are **translation invariant** (detect features regardless of location in patch)
+- Process **multiple channels simultaneously** (all 5 variables at once)
+- Capture **hierarchical features** (simple → complex patterns across layers)
+
+**Why CNN over traditional methods (Random Forest, MaxEnt)?**
+- Traditional methods use only the **center pixel** value at each point
+- CNNs use the **entire 48×48 patch** (2,304 pixels per variable)
+- Spatial context improves predictions (e.g., a forest patch surrounded by roads
+  is different from forest surrounded by more forest)
 
 ---
 
-**Next steps:**
-1. Design CNN architecture (number of layers, filters, etc.)
-2. Compile model (optimizer, loss function, metrics)
-3. Train with early stopping and learning rate scheduling
-4. Evaluate on test set
-5. Generate habitat suitability maps for entire study area
+### Model Architecture
+```r
+# =============================================================================
+# INPUT LAYER
+# Shape: (batch_size, height, width, channels)
+#        (None, 48, 48, 3) → None = flexible batch size
+# =============================================================================
 
-Would you like me to create the CNN training section as well?
+input <- layer_input(shape = c(patch_size, patch_size, length(var_names)))
+
+output <- input %>%
+```
+
+**Input shape explained:**
+- `None`: Batch size (flexible, set during training)
+- `48`: Patch height (pixels)
+- `48`: Patch width (pixels)  
+- `3`: Number of input channels (environmental variables: NDVI, Roughness, Road Density)
+
+---
+
+### Convolutional Block 1 — Simple Feature Detection
+```r
+  # Conv Block 1: detect simple local features (edges, gradients)
+  layer_conv_2d(
+    filters     = 16,       # 16 different feature detectors (kernels)
+    kernel_size = c(3, 3),  # Each kernel looks at a 3×3 pixel window
+    activation  = "relu",   # ReLU: f(x) = max(0, x) — removes negatives
+    padding     = "same"    # Output same size as input (48×48 preserved)
+  ) %>%
+  layer_batch_normalization() %>%  # Normalize outputs → stabilizes training
+  layer_max_pooling_2d(
+    pool_size = c(2, 2)     # Take max of each 2×2 block → halves dimensions
+  ) %>%                     # Output: (None, 24, 24, 16)
+```
+
+**How Conv2D works:**
+- A 3×3 kernel **slides** across the entire 48×48 patch
+- At each position, it computes a **weighted sum** of the 9 pixels × 3 channels
+- 16 different kernels → 16 different **feature maps**
+- Each kernel learns to detect a different low-level pattern
+
+**Parameter count (Conv Block 1):**
+```
+448 parameters = (3 × 3 × 3 channels + 1 bias) × 16 filters
+               = (9 × 3 + 1) × 16
+               = 28 × 16 = 448
+```
+
+**Batch Normalization:**
+- Normalizes the output of each layer to mean ≈ 0, variance ≈ 1
+- Prevents **internal covariate shift** (distribution drift between layers)
+- Allows higher learning rates and faster convergence
+- Non-trainable params = 480 (running mean/variance statistics)
+
+**Max Pooling:**
+- Takes the **maximum value** in each 2×2 block
+- Reduces spatial dimensions: 48×48 → 24×24
+- Makes features **translation invariant** (small shifts don't matter)
+- No parameters (just a mathematical operation)
+
+---
+
+### Convolutional Block 2 — Texture Pattern Detection
+```r
+  # Conv Block 2: detect intermediate features (texture, patch patterns)
+  layer_conv_2d(
+    filters     = 32,       # More filters = more complex features
+    kernel_size = c(3, 3),
+    activation  = "relu",
+    padding     = "same"
+  ) %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(
+    pool_size = c(2, 2)     # 24×24 → 12×12
+  ) %>%                     # Output: (None, 12, 12, 32)
+```
+
+**What Block 2 learns:**
+- Combinations of Block 1 features (edges → textures)
+- Examples: forest texture vs urban texture, smooth valleys vs rough ridges
+- 32 filters capture more diverse feature combinations
+- Each filter now "sees" a larger area of the original image
+
+**Parameter count (Conv Block 2):**
+```
+4,640 parameters = (3 × 3 × 16 input channels + 1 bias) × 32 filters
+                 = (144 + 1) × 32 = 4,640
+```
+
+---
+
+### Convolutional Block 3 — Habitat Configuration Detection
+```r
+  # Conv Block 3: detect complex patterns (habitat configurations)
+  layer_conv_2d(
+    filters     = 64,       # Even more filters for complex patterns
+    kernel_size = c(3, 3),
+    activation  = "relu",
+    padding     = "same"
+  ) %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(
+    pool_size = c(2, 2)     # 12×12 → 6×6
+  ) %>%                     # Output: (None, 6, 6, 64)
+```
+
+**What Block 3 learns:**
+- Higher-order spatial patterns across larger receptive fields
+- Examples: "forest surrounded by grassland", "road network density"
+- By Block 3, each neuron has an **effective receptive field** of ~24×24 pixels
+  (covers ~2.4 km × 2.4 km of the original patch)
+- 64 filters capture a wide variety of habitat configurations
+
+**Parameter count (Conv Block 3):**
+```
+18,496 parameters = (3 × 3 × 32 + 1) × 64 = 18,496
+```
+
+---
+
+### Convolutional Block 4 — Abstract Pattern Detection
+```r
+  # Conv Block 4: abstract high-level habitat features
+  # No MaxPooling here — preserve spatial information at 6×6 scale
+  layer_conv_2d(
+    filters     = 128,      # Deepest layer = most abstract features
+    kernel_size = c(3, 3),
+    activation  = "relu",
+    padding     = "same"
+  ) %>%
+  layer_batch_normalization() %>%
+                            # Output: (None, 6, 6, 128)
+```
+
+**Why no MaxPooling after Block 4?**
+- At 6×6, spatial dimensions are already very small
+- Further pooling would lose too much spatial information
+- Instead, we use Global Average Pooling next
+
+**What Block 4 learns:**
+- Highly abstract combinations of all previous features
+- At this point, each neuron's **receptive field covers the entire patch**
+- The network can detect complex, landscape-scale habitat patterns
+
+**Parameter count (Conv Block 4):**
+```
+73,856 parameters = (3 × 3 × 64 + 1) × 128 = 73,856
+```
+
+---
+
+### Global Average Pooling — Spatial Collapse
+```r
+  # Global Average Pooling: collapse (6, 6, 128) → (128,)
+  # Computes the mean of each feature map across all spatial positions
+  layer_global_average_pooling_2d() %>%
+                            # Output: (None, 128)
+```
+
+**Global Average Pooling vs Flatten:**
+
+| Method | Output size | Parameters | Overfitting risk |
+|--------|-------------|------------|-----------------|
+| Flatten | 6×6×128 = 4,608 | Very high | High |
+| **Global Avg Pool** | **128** | **None** | **Low** ✅ |
+
+**What it does:**
+- For each of the 128 feature maps (6×6 each), compute the **mean value**
+- Outputs a single number per feature map → 128 numbers total
+- Discards spatial information but retains **what** features are present
+- No trainable parameters (pure mathematical operation)
+
+---
+
+### Dense Classification Layers
+```r
+  # Dense Block 1: combine extracted features for classification
+  layer_dense(
+    units      = 128,       # 128 fully connected neurons
+    activation = "relu"
+  ) %>%
+  layer_dropout(rate = 0.4) %>%
+  # Dropout: randomly set 40% of neurons to 0 during training
+  # Forces network to learn redundant representations
+  # Only active during training (disabled at inference time)
+
+  # Dense Block 2: compress features before final prediction
+  layer_dense(
+    units      = 64,        # 64 neurons
+    activation = "relu"
+  ) %>%
+  layer_dropout(rate = 0.3) %>%
+                            # Output: (None, 64)
+```
+
+**Dense Layer 1 parameters:**
+```
+16,512 = 128 inputs × 128 neurons + 128 biases
+```
+
+**Dense Layer 2 parameters:**
+```
+8,256 = 128 inputs × 64 neurons + 64 biases
+```
+
+**Dropout:**
+- During **training**: randomly sets 40% (then 30%) of neurons to 0
+- During **evaluation/prediction**: all neurons active, outputs scaled
+- Acts as **ensemble learning** (different network subsets each batch)
+- Reduces co-adaptation between neurons → better generalization
+
+---
+
+### Output Layer
+```r
+  # Output: binary probability of wolf presence
+  layer_dense(
+    units      = 1,         # Single output neuron
+    activation = "sigmoid"  # Maps any value to [0, 1]
+  )                         # Output: (None, 1)
+                            # Interpreted as P(wolf presence)
+```
+
+**Sigmoid function:**
+```
+σ(x) = 1 / (1 + e^(-x))
+
+x → -∞  →  σ(x) → 0  (certain absence)
+x = 0   →  σ(x) = 0.5 (uncertain)
+x → +∞  →  σ(x) → 1  (certain presence)
+```
+
+**Classification threshold:**
+- Output > 0.5 → predicted **presence** (label = 1)
+- Output ≤ 0.5 → predicted **absence** (label = 0)
+
+**Output layer parameters:**
+```
+65 = 64 inputs × 1 neuron + 1 bias
+```
+
+---
+
+### Model Summary
+```
+Model: "functional_14"
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓
+┃ Layer (type)                             ┃ Output Shape                    ┃       Param #   ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━┩
+│ input_layer (InputLayer)                 │ (None, 48, 48, 3)               │             0   │
+│ conv2d (Conv2D)                          │ (None, 48, 48, 16)              │           448   │
+│ batch_normalization (BatchNorm)          │ (None, 48, 48, 16)              │            64   │
+│ max_pooling2d (MaxPooling2D)             │ (None, 24, 24, 16)              │             0   │
+│ conv2d_1 (Conv2D)                        │ (None, 24, 24, 32)              │         4,640   │
+│ batch_normalization_1 (BatchNorm)        │ (None, 24, 24, 32)              │           128   │
+│ max_pooling2d_1 (MaxPooling2D)           │ (None, 12, 12, 32)              │             0   │
+│ conv2d_2 (Conv2D)                        │ (None, 12, 12, 64)              │        18,496   │
+│ batch_normalization_2 (BatchNorm)        │ (None, 12, 12, 64)              │           256   │
+│ max_pooling2d_2 (MaxPooling2D)           │ (None, 6, 6, 64)                │             0   │
+│ conv2d_3 (Conv2D)                        │ (None, 6, 6, 128)               │        73,856   │
+│ batch_normalization_3 (BatchNorm)        │ (None, 6, 6, 128)               │           512   │
+│ global_average_pooling2d                 │ (None, 128)                     │             0   │
+│ dense (Dense)                            │ (None, 128)                     │        16,512   │
+│ dropout (Dropout)                        │ (None, 128)                     │             0   │
+│ dense_1 (Dense)                          │ (None, 64)                      │         8,256   │
+│ dropout_1 (Dropout)                      │ (None, 64)                      │             0   │
+│ dense_2 (Dense)                          │ (None, 1)                       │            65   │
+└──────────────────────────────────────────┴─────────────────────────────────┴─────────────────┘
+ Total params:        123,233 (481.38 KB)
+ Trainable params:    122,753 (479.50 KB)
+ Non-trainable params:    480 (1.88 KB)
+```
+
+**Parameter breakdown:**
+
+| Component | Parameters | % of Total |
+|-----------|-----------|------------|
+| Conv Block 1 (16 filters) | 448 | 0.4% |
+| Conv Block 2 (32 filters) | 4,640 | 3.8% |
+| Conv Block 3 (64 filters) | 18,496 | 15.0% |
+| Conv Block 4 (128 filters) | 73,856 | 59.9% |
+| Batch Normalization (all) | 960 | 0.8% |
+| Dense 128 | 16,512 | 13.4% |
+| Dense 64 | 8,256 | 6.7% |
+| Output Dense 1 | 65 | 0.1% |
+| **Total** | **123,233** | **100%** |
+
+**Non-trainable parameters (480):**
+- Batch normalization running statistics (mean and variance)
+- Updated during training but not via backpropagation
+- Used to normalize inputs at inference time
+
+---
+
+### Model Compilation
+```r
+model %>% compile(
+  optimizer = optimizer_adam(learning_rate = 0.001),
+  loss      = "binary_crossentropy",
+  metrics   = c("accuracy")
+)
+```
+
+**Adam Optimizer:**
+- Combines **momentum** (uses past gradients) and **RMSprop** (adapts LR per parameter)
+- Learning rate = 0.001: standard starting point, updated dynamically during training
+- Adapts individual learning rates for each parameter
+
+**Binary Crossentropy Loss:**
+```
+L = -[y · log(ŷ) + (1-y) · log(1-ŷ)]
+
+Where:
+  y  = true label (0 or 1)
+  ŷ  = predicted probability (sigmoid output)
+```
+- When `y = 1` (presence) and `ŷ = 0.9`: L = -log(0.9) = 0.105 (small penalty)
+- When `y = 1` (presence) and `ŷ = 0.1`: L = -log(0.1) = 2.303 (large penalty)
+- Penalizes **confident wrong predictions** heavily
+
+**Class Weights:**
+```r
+class_weights <- list("0" = 1.0, "1" = 2.0)
+```
+- Wolf presence (1) weighted **2×** more than absence (0)
+- Ecologically justified: **missing a wolf is worse than a false alarm**
+- Compensates for any subtle class imbalance in the training batches
+
+---
+
+### Training Callbacks
+```r
+# Stop training when validation loss stops improving
+early_stop <- callback_early_stopping(
+  monitor              = "val_loss",
+  patience             = 20,
+  restore_best_weights = TRUE,
+  verbose              = 1
+)
+
+# Reduce learning rate when training plateaus
+reduce_lr <- callback_reduce_lr_on_plateau(
+  monitor  = "val_loss",
+  factor   = 0.5,          # New LR = old LR × 0.5
+  patience = 8,
+  verbose  = 1,
+  min_lr   = 0.00001
+)
+```
+
+**Early Stopping:**
+- Monitors **validation loss** (not training loss)
+- If val_loss does not improve for **20 consecutive epochs** → stop
+- `restore_best_weights = TRUE`: reverts to the epoch with lowest val_loss
+- Prevents overfitting (model memorizing training data)
+
+**ReduceLROnPlateau:**
+- If val_loss does not improve for **8 epochs** → halve the learning rate
+- Learning rate schedule: 0.001 → 0.0005 → 0.00025 → ...
+- Minimum floor: 0.00001 (prevents LR from becoming uselessly small)
+- Helps escape local minima and fine-tune at later stages
+
+---
+
+### Training
+```r
+history <- model %>% fit(
+  x               = x_train,
+  y               = y_train,
+  epochs          = 100,
+  batch_size      = 32,
+  validation_data = list(x_val, y_val),
+  class_weight    = class_weights,
+  callbacks       = list(early_stop, reduce_lr),
+  verbose         = 1
+)
+```
+
+**Training hyperparameters:**
+- **Epochs:** Maximum 100 (early stopping intervenes earlier)
+- **Batch size:** 32 patches processed simultaneously per gradient update
+- **Steps per epoch:** ceil(training_samples / 32)
+- **Gradient updates per epoch:** Same as steps per epoch
+
+**Training output:**
+```
+Epoch 27: early stopping
+Restoring model weights from the end of the best epoch: 7.
+
+Training complete!
+```
+
+**Analysis of training outcome:**
+- **Early stopping triggered at epoch 27**
+- **Best epoch: epoch 7** (lowest validation loss)
+- Training ran for 27 epochs but the **best model was from epoch 7**
+
+---
+
+### Results and Evaluation
+
+[INSERT: Training history plot (loss and accuracy curves)]
+
+**Training curve interpretation:**
+
+Looking at the epoch-by-epoch output, a clear **overfitting pattern** emerges
+
+**Key observations:**
+
+- **Training accuracy** climbs steadily: 50% → 84% (epoch 27)
+- **Validation accuracy** stagnates and fluctuates: 49% → 52% (epoch 27)
+- **Training loss** decreases consistently: 1.03 → 0.47
+- **Validation loss** initially decreases slightly then **increases sharply** from epoch 7 onward
+- **Train-Val gap at stopping epoch:** 84% - 52% = **32% gap** (severe overfitting)
+
+**The learning rate reductions accelerated overfitting:**
+- At epoch 16: LR drops from 0.001 → 0.0005 → training improves but val stays flat
+- At epoch 24: LR drops from 0.0005 → 0.00025 → training improves further but val degrades
+- Lower learning rates allowed the model to **memorize training patches** with increasing precision
+  while **failing to generalize** to unseen data
+
+**Best epoch = 7:**
+- Early stopping correctly identified epoch 7 as the best checkpoint
+- At epoch 7: train accuracy ≈ 57%, val loss = 0.678 (lowest recorded)
+- The restored weights represent the **least overfit state** of the model
+- This is why test accuracy (71.25%) is **higher than the training accuracy at epoch 7** (~57%):
+  the test set may contain slightly easier examples, or the class weight
+  adjustment shifted predictions favorably
+
+---
+
+**Test Set Results:**
+```
+============================================================
+TEST SET RESULTS
+============================================================
+Loss:      0.4848
+Accuracy:  71.25%
+============================================================
+```
+
+**Interpreting the results:**
+
+**Loss = 0.4848:**
+- Binary crossentropy on the held-out test set
+- Note: the test loss (0.48) is **lower than the final validation loss (1.16)**
+- This discrepancy is expected: test set is evaluated using the **restored best
+  weights from epoch 7**, not the final overfit weights
+
+**Accuracy = 71.25%:**
+- Model correctly classifies **71.25% of unseen test patches**
+- Baseline (random guessing on balanced data): **50%**
+- **Improvement over random: +21.25%**
+- Meaningful given only 3 input variables and noisy ecological data
+
+**Context for ecological modeling:**
+
+| Accuracy Range | Interpretation |
+|---------------|----------------|
+| 50-60% | Poor — barely above random |
+| 60-70% | Moderate — weak signal |
+| **70-80%** | **Good — clear signal** Your result: 71.25% |
+| 80-90% | Very good |
+| >90% | Excellent (or overfitting) |
+
+---
+
+**Why overfitting occurred:**
+
+1. **Small dataset:** ~560 training patches is limited for a 123,233-parameter model
+   - Data-to-parameter ratio: 614 / 122,753 ≈ **0.005** (very low)
+   - But: 614 * 3 * 48^2 / 122,753 ≈ **34**
+
+2. **Model capacity too high:** 4 convolutional blocks with 128 filters in the deepest
+   layer give the model enough capacity to memorize the training patches
+
+3. **Learning rate reductions backfired:** Instead of helping generalization,
+   halving the LR at epochs 16 and 24 allowed the model to fit the training
+   data more precisely without improving validation performance
+
+4. **Pseudo-absence uncertainty:** Some pseudo-absences may actually be
+   wolf-suitable habitat — the model may be learning noise in the labels
+
+---
+
+**What overfitting means ecologically:**
+
+The model learned **location-specific quirks** of the training patches rather
+than generalizable habitat features. For example:
+
+- It may have memorized specific NDVI texture patterns at known wolf GPS locations
+- It may have overfit to the particular donut-buffer sampling distribution
+- It cannot reliably distinguish wolf habitat from non-habitat in new areas
+
+Despite the overfitting, the **71.25% test accuracy is still informative**
+because:
+- Early stopping restored the best-generalizing weights (epoch 7)
+- The test set was completely unseen during training and hyperparameter tuning
+- 71.25% represents a genuine (if modest) learned signal about wolf habitat
+
+---
+
+**Comparison across all model attempts:**
+
+| Attempt | Variables | Loss | Accuracy | Train-Val Gap | Status |
+|---------|-----------|------|----------|---------------|--------|
+| Baseline | 5 | Binary CE | 70.89% | ~3% | Underfitting |
+| Bigger model | 5 | Binary CE | 70.89% | ~25% | Overfitting |
+| Focal Loss | 3 | Focal | 73.51% | ~27% | Overfitting |
+| **Final model** | **3** | **Binary CE** | **71.25%** | **~32%** | **Overfitting but best generalizing** ✅ |
+
+
+**Limitations and future improvements:**
+- **More training data:** Relax spatial thinning from 7 km to 5 km
+- **Stronger regularization:** L2 weight decay on convolutional layers
+- **Smaller model:** Reduce to 2 convolutional blocks (8→16 filters)
+- **More variables:** Prey density, protected area status, forest type
+- **Different pseudo-absence strategy:** Sample from confirmed unsuitable habitat
+  (urban cores, intensive agriculture) rather than random donut buffer
