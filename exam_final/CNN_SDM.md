@@ -2226,7 +2226,8 @@ par(mfrow = c(1, 1))
 ```
 
 ### Results
-[INSERT: Grid of patches showing presence vs absence examples for each variable]
+
+![patch plots](patch plots.png)
 
 ---
 
