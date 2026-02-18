@@ -940,20 +940,12 @@ landuse <- rast("landuse_wolf_habitat_100m.tif")
 ```r
 # NDVI may have different resolution from other layers
 # Resample to match 100m grid
-
-if (!compareGeom(elevation, ndvi, stopOnError = FALSE)) {
-  cat("NDVI has different geometry - resampling to 100m grid...\n")
-  
-  ndvi <- resample(
+ndvi <- resample(
     ndvi, 
     elevation,           # Use elevation as template
     method = "bilinear"  # Smooth interpolation for continuous data
   )
   
-  cat("NDVI resampled to match other layers\n\n")
-} else {
-  cat("NDVI already aligned with other layers\n\n")
-}
 ```
 
 **Why resample NDVI separately?**
