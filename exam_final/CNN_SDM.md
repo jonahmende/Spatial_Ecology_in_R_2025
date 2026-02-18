@@ -33,7 +33,7 @@
 ### Setup and Libraries
 ```r
 # Set working directory
-setwd("/path/to/your/project")
+setwd("/Users/jonahmende/Library/Mobile Documents/com~apple~CloudDocs/Unibo/3. semestre/spatial ecology in r/final")
 
 # Load required libraries
 libs <- c("geodata", "elevatr", "terra", "sf", "rgbif", "caret", "keras3", 
