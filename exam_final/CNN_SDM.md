@@ -60,7 +60,7 @@ regions <- italy[italy$NAME_1 %in% c(
 # Project to UTM Zone 32N (EPSG:32632) for metric calculations
 regions_utm <- project(regions, "EPSG:32632")
 
-# Convert to sf object for spatial operations
+# Convert to sf object for spatial operations (to use before projection)
 regions_sf <- st_as_sf(regions)
 
 # Union all regions into single polygon
