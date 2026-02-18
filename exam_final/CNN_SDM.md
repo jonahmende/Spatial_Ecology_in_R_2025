@@ -40,9 +40,25 @@
 setwd("/Users/jonahmende/Library/Mobile Documents/com~apple~CloudDocs/Unibo/3. semestre/spatial ecology in r/final")
 
 # Load required libraries
-libs <- c("geodata", "elevatr", "terra", "sf", "rgbif", "caret", "keras3", 
-          "corrplot", "dplyr", "abind", "ggplot2", "tidyterra", "ggspatial", 
-          "pROC", "imageRy")
+
+libs <- c(
+  "geodata",      # Download global spatial datasets (GADM boundaries, climate)
+  "elevatr",      # Retrieve elevation data from various sources
+  "terra",        # Modern raster/vector processing and spatial operations
+  "sf",           # Simple Features for vector data and coordinate transformations
+  "rgbif",        # Access GBIF database for species occurrence records
+  "caret",        # Machine learning utilities (data splitting, cross-validation)
+  "keras3",       # Deep learning framework for building and training CNNs
+  "corrplot",     # Visualize correlation matrices with color-coded heatmaps
+  "dplyr",        # Data wrangling and manipulation (filter, mutate, summarize)
+  "abind",        # Combine multi-dimensional arrays (stack image patches)
+  "ggplot2",      # Create publication-quality plots and maps
+  "tidyterra",    # Make terra objects compatible with ggplot2
+  "ggspatial",    # Add map elements to ggplot (scale bars, north arrows)
+  "pROC",         # ROC curve analysis and AUC calculations for model evaluation
+  "imageRy"       # Download and process satellite imagery (MODIS, Landsat)
+)
+
 lapply(libs, require, character.only = TRUE)  # takes vector or list and applies a function to each element one at a time
 
 # Create directory for map data
