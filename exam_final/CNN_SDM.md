@@ -1,7 +1,7 @@
 # Wolf Habitat Suitability Modeling in Northern Italy
-Author: Jonah Mende
-Course: Spatial Ecology in R
-Professor: Prof. Duccio Rocchini
+**Author:** Jonah Mende  
+**Course:** Spatial Ecology in R  
+**Professor:** Prof. Duccio Rocchini
 
 ![Wolf](Gray_wolf.jpg)
 
