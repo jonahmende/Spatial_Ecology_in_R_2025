@@ -96,7 +96,6 @@ dev.off()
 **Key characteristics:**
 - Includes both Alpine and Apennine mountain ranges
 - High habitat diversity: forests, grasslands, agricultural areas
-- - **CRS:** EPSG:32632 (UTM Zone 32N)
 
 ---
 
@@ -892,16 +891,6 @@ Before training the Convolutional Neural Network (CNN), all environmental variab
 2. **Faster convergence:** Standardized inputs improve training speed
 3. **Numerical stability:** Prevents gradient explosion/vanishing
 
-We use **Z-score standardization** (mean = 0, standard deviation = 1):
-```
-Z = (X - μ) / σ
-```
-
-Where:
-- X = original value
-- μ = mean of variable
-- σ = standard deviation
-- Z = standardized value
 
 ---
 
@@ -1000,8 +989,8 @@ im.ggplot <- function(raster, layer = 1, title = NULL,
                       log_scale = FALSE,
                       reverse_colors = FALSE) {
 
-  # choose layer
-  if (nlyr(raster) > 1) { 
+  # choosing layer
+  if (nlyr(raster) > 1) {
     raster <- raster[[layer]]
   }
 
@@ -1073,6 +1062,19 @@ setwd("/Users/jonahmende/Library/Mobile Documents/com~apple~CloudDocs/Unibo/3. s
 ---
 
 ### Z-Score Standardization
+
+We use **Z-score standardization** (mean = 0, standard deviation = 1):
+```
+Z = (X - μ) / σ
+```
+
+Where:
+- X = original value
+- μ = mean of variable
+- σ = standard deviation
+- Z = standardized value
+
+
 ```r
 # =============================================================================
 # Z-SCORE STANDARDIZATION FOR CNN
